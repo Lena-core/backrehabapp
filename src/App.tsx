@@ -5,14 +5,14 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { StyleSheet } from 'react-native';
 
 // Импорт экранов (будут созданы далее)
-import PainTrackerScreen from './src/screens/PainTrackerScreen';
-import DayPlanScreen from './src/screens/DayPlanScreen';
-import ExerciseExecutionScreen from './src/screens/ExerciseExecutionScreen';
-import SettingsScreen from './src/screens/SettingsScreen';
+import PainTrackerScreen from './screens/PainTrackerScreen';
+import DayPlanScreen from './screens/DayPlanScreen';
+import ExerciseExecutionScreen from './screens/ExerciseExecutionScreen';
+import SettingsScreen from './screens/SettingsScreen';
 
 // Импорт типов
-import { RootStackParamList, TabParamList } from './src/types';
-import { COLORS } from './src/constants/colors';
+import { RootStackParamList, TabParamList } from './types';
+import { COLORS } from './constants/colors';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createStackNavigator<RootStackParamList>();
