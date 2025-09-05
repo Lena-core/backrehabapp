@@ -7,8 +7,8 @@ import {
   ScrollView,
   Alert,
   BackHandler,
+  Image,
 } from 'react-native';
-import FastImage from 'react-native-fast-image';
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -363,14 +363,14 @@ const ExerciseExecutionScreen: React.FC = () => {
 
         {/* Анимация упражнения */}
         <View style={styles.mediaContainer}>
-          <FastImage 
-            source={{
-              uri: EXERCISE_ANIMATIONS_URI[exerciseType],
-              priority: FastImage.priority.high,
-            }}
+          <Image 
+            source={EXERCISE_ANIMATIONS[exerciseType] || DEFAULT_PLACEHOLDER}
             style={styles.exerciseAnimation}
-            resizeMode={FastImage.resizeMode.contain}
-            onError={() => console.log('Error loading animation for:', exerciseType)}
+            resizeMode="contain"
+            onError={() => {
+              console.log('Error loading animation for:', exerciseType);
+              // Можно добавить fallback к URI версии
+            }}
           />
         </View>
 
