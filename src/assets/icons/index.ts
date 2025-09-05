@@ -6,3 +6,6 @@ export const PAIN_ICONS = {
   severe: require('./pain_severe.png'),
   acute: require('./pain_acute.png'),
 };
+
+// Лого приложения
+export const APP_LOGO = require('./logo.png');

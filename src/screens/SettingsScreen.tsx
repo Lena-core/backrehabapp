@@ -9,9 +9,9 @@ import {
   Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserSettings } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
+import { useUserSettings } from '../hooks/useUserSettings';
 
 interface SliderProps {
   label: string;
@@ -95,7 +95,9 @@ const REPS_SCHEMAS = [
 ];
 
 const SettingsScreen: React.FC = () => {
-  const [settings, setSettings] = useState<UserSettings>({
+  const { settings, loading, saveSettings } = useUserSettings();
+  
+  const [localSettings, setLocalSettings] = useState<UserSettings>({
     exerciseSettings: {
       holdTime: 7,
       repsSchema: [3, 2, 1],
@@ -111,51 +113,43 @@ const SettingsScreen: React.FC = () => {
   const [selectedPresetIndex, setSelectedPresetIndex] = useState(0);
   const [customSchema, setCustomSchema] = useState([3, 2, 1]);
 
+  // Обновляем локальные настройки когда получаем данные из хука
   useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
-    try {
-      const savedSettings = await AsyncStorage.getItem('userSettings');
-      if (savedSettings) {
-        const parsed: UserSettings = JSON.parse(savedSettings);
-        setSettings(parsed);
-        
-        // Определяем тип схемы
-        const matchingPreset = REPS_SCHEMAS.findIndex(
-          schema => JSON.stringify(schema.value) === JSON.stringify(parsed.exerciseSettings.repsSchema)
-        );
-        
-        if (matchingPreset !== -1) {
-          setSelectedSchemaType('preset');
-          setSelectedPresetIndex(matchingPreset);
-        } else {
-          setSelectedSchemaType('custom');
-          setCustomSchema(parsed.exerciseSettings.repsSchema);
-        }
+    if (settings) {
+      console.log('Settings loaded in SettingsScreen:', settings);
+      setLocalSettings(settings);
+      
+      // Определяем тип схемы
+      const matchingPreset = REPS_SCHEMAS.findIndex(
+        schema => JSON.stringify(schema.value) === JSON.stringify(settings.exerciseSettings.repsSchema)
+      );
+      
+      if (matchingPreset !== -1) {
+        setSelectedSchemaType('preset');
+        setSelectedPresetIndex(matchingPreset);
+      } else {
+        setSelectedSchemaType('custom');
+        setCustomSchema(settings.exerciseSettings.repsSchema);
       }
-    } catch (error) {
-      console.error('Error loading settings:', error);
     }
-  };
+  }, [settings]);
 
-  const saveSettings = async () => {
+  const handleSaveSettings = async () => {
     try {
       const updatedSettings = {
-        ...settings,
+        ...localSettings,
         exerciseSettings: {
-          ...settings.exerciseSettings,
+          ...localSettings.exerciseSettings,
           repsSchema: selectedSchemaType === 'preset' 
             ? REPS_SCHEMAS[selectedPresetIndex].value 
             : customSchema,
         },
       };
       
-      await AsyncStorage.setItem('userSettings', JSON.stringify(updatedSettings));
-      setSettings(updatedSettings);
+      console.log('Saving updated settings:', updatedSettings);
+      await saveSettings(updatedSettings);
       
-      Alert.alert('Успешно', 'Настройки сохранены!');
+      Alert.alert('Успешно', 'Настройки сохранены! План упражнений обновлен.');
     } catch (error) {
       console.error('Error saving settings:', error);
       Alert.alert('Ошибка', 'Не удалось сохранить настройки');
@@ -169,6 +163,16 @@ const SettingsScreen: React.FC = () => {
     setCustomSchema(newSchema);
   };
 
+  if (loading) {
+    return (
+      <LinearGradient colors={GRADIENTS.MAIN_BACKGROUND} style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Загрузка настроек...</Text>
+        </View>
+      </LinearGradient>
+    );
+  }
+
   return (
     <LinearGradient colors={GRADIENTS.MAIN_BACKGROUND} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -178,15 +182,15 @@ const SettingsScreen: React.FC = () => {
 
           <Slider
             label="Время удержания"
-            value={settings.exerciseSettings.holdTime}
+            value={localSettings.exerciseSettings.holdTime}
             min={3}
             max={10}
             suffix=" сек"
             recommendation="Для начала рекомендуется 7 секунд, так как это оптимальное время для тренировки выносливости."
             onValueChange={(value) =>
-              setSettings({
-                ...settings,
-                exerciseSettings: { ...settings.exerciseSettings, holdTime: value },
+              setLocalSettings({
+                ...localSettings,
+                exerciseSettings: { ...localSettings.exerciseSettings, holdTime: value },
               })
             }
           />
@@ -264,15 +268,15 @@ const SettingsScreen: React.FC = () => {
 
           <Slider
             label="Пауза между подходами"
-            value={settings.exerciseSettings.restTime}
+            value={localSettings.exerciseSettings.restTime}
             min={5}
             max={30}
             suffix=" сек"
             recommendation="Короткие паузы (10-15 секунд) являются ключом к развитию выносливости."
             onValueChange={(value) =>
-              setSettings({
-                ...settings,
-                exerciseSettings: { ...settings.exerciseSettings, restTime: value },
+              setLocalSettings({
+                ...localSettings,
+                exerciseSettings: { ...localSettings.exerciseSettings, restTime: value },
               })
             }
           />
@@ -284,36 +288,36 @@ const SettingsScreen: React.FC = () => {
 
           <Slider
             label="Длительность сессии"
-            value={settings.walkSettings.duration}
+            value={localSettings.walkSettings.duration}
             min={1}
             max={60}
             suffix=" мин"
             recommendation="Начинайте с 5-10 минут. Постепенно увеличивайте время, но только если ходьба не вызывает боль."
             onValueChange={(value) =>
-              setSettings({
-                ...settings,
-                walkSettings: { ...settings.walkSettings, duration: value },
+              setLocalSettings({
+                ...localSettings,
+                walkSettings: { ...localSettings.walkSettings, duration: value },
               })
             }
           />
 
           <Slider
             label="Количество сессий"
-            value={settings.walkSettings.sessions}
+            value={localSettings.walkSettings.sessions}
             min={1}
             max={5}
             recommendation="Начинать с 3 коротких сессий в день. Несколько коротких прогулок эффективнее, чем одна длительная, для питания межпозвонковых дисков."
             onValueChange={(value) =>
-              setSettings({
-                ...settings,
-                walkSettings: { ...settings.walkSettings, sessions: value },
+              setLocalSettings({
+                ...localSettings,
+                walkSettings: { ...localSettings.walkSettings, sessions: value },
               })
             }
           />
         </View>
 
         {/* Кнопка сохранения */}
-        <TouchableOpacity style={styles.saveButton} onPress={saveSettings}>
+        <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
           <Text style={styles.saveButtonText}>Сохранить Настройки</Text>
         </TouchableOpacity>
 
@@ -330,6 +334,16 @@ const SettingsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 18,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.7,
   },
   scrollContent: {
     paddingHorizontal: 20,

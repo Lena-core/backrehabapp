@@ -60,16 +60,24 @@ const formatExerciseDescription = (exerciseType: ExerciseType, settings: UserSet
   
   if (exerciseType === 'walk') {
     const { duration, sessions } = settings.walkSettings;
-    return sessions > 1 ? `${sessions} сессии по ${duration} мин` : `${duration} мин`;
+    if (sessions === 1) {
+      return `${duration} мин`;
+    }
+    return `${sessions} сессии по ${duration} мин каждая`;
   }
   
-  const totalTimeInSeconds = calculateExerciseTime(exerciseType, settings);
-  const minutes = Math.round(totalTimeInSeconds / 60);
-  
-  const { repsSchema } = settings.exerciseSettings;
+  const { holdTime, repsSchema, restTime } = settings.exerciseSettings;
+  const totalSets = repsSchema.length;
   const setsDescription = repsSchema.join('-');
   
-  return `${minutes} мин (${setsDescription})`;
+  // Рассчитываем общее время
+  const totalReps = repsSchema.reduce((sum, reps) => sum + reps, 0);
+  const exerciseTime = totalReps * holdTime;
+  const restTimeTotal = (totalSets - 1) * restTime;
+  const totalTimeInSeconds = exerciseTime + restTimeTotal + 30; // +30 сек на подготовку
+  const totalMinutes = Math.ceil(totalTimeInSeconds / 60);
+  
+  return `${totalSets} подхода (${setsDescription})\nУдержание: ${holdTime}с, отдых: ${restTime}с\n≈ ${totalMinutes} мин`;
 };
 
 const PAIN_RECOMMENDATIONS: Record<PainLevel, string> = {
@@ -107,23 +115,24 @@ const DayPlanScreen: React.FC = () => {
       
       setCurrentPainLevel(painLevel);
 
-      // Загружаем состояние упражнений
+      // Создаем обновленный план на основе текущих настроек
       const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
       let dayExercises: Exercise[];
 
       if (savedExercises) {
-        dayExercises = JSON.parse(savedExercises);
-        // Обновляем описания на основе текущих настроек
-        dayExercises = dayExercises.map(exercise => ({
+        const oldExercises = JSON.parse(savedExercises);
+        // Обновляем описания на основе актуальных настроек
+        dayExercises = oldExercises.map((exercise: Exercise) => ({
           ...exercise,
           description: formatExerciseDescription(exercise.id as ExerciseType, settings)
         }));
       } else {
-        // Создаем план упражнений на основе уровня боли и настроек
+        // Создаем новый план упражнений
         dayExercises = createDayPlan(painLevel, settings);
-        await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(dayExercises));
       }
 
+      // Сохраняем обновленный план
+      await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(dayExercises));
       setExercises(dayExercises);
     } catch (error) {
       console.error('Error loading day plan:', error);
@@ -132,13 +141,53 @@ const DayPlanScreen: React.FC = () => {
     }
   }, [settings]);
 
-  // Обновляем план при изменении настроек
+  // Функция для принудительного обновления плана
+  const refreshDayPlan = useCallback(async () => {
+    if (!settings) return;
+    
+    console.log('Refreshing day plan with settings:', {
+      holdTime: settings.exerciseSettings.holdTime,
+      repsSchema: settings.exerciseSettings.repsSchema,
+      restTime: settings.exerciseSettings.restTime,
+      walkDuration: settings.walkSettings.duration,
+      walkSessions: settings.walkSettings.sessions
+    });
+    
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Получаем текущие упражнения
+      const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+      
+      if (savedExercises) {
+        const currentExercises = JSON.parse(savedExercises);
+        
+        // Обновляем только описания, сохраняя статус выполнения
+        const updatedExercises = currentExercises.map((exercise: Exercise) => ({
+          ...exercise,
+          description: formatExerciseDescription(exercise.id as ExerciseType, settings)
+        }));
+        
+        console.log('Updated exercise descriptions:', updatedExercises.map(ex => ({ name: ex.name, description: ex.description })));
+        
+        await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
+        setExercises(updatedExercises);
+      } else {
+        // Если плана нет, создаем новый
+        await loadDayPlan();
+      }
+    } catch (error) {
+      console.error('Error refreshing day plan:', error);
+    }
+  }, [settings, loadDayPlan]);
+
+  // Обновляем план при изменении настроек и возвращении на экран
   useFocusEffect(
     useCallback(() => {
       if (settings) {
-        loadDayPlan();
+        refreshDayPlan();
       }
-    }, [settings, loadDayPlan])
+    }, [refreshDayPlan])
   );
 
   useEffect(() => {
@@ -378,6 +427,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.WHITE,
     borderRadius: 15,
     padding: 20,
+    minHeight: 120, // Минимальная высота для многострочного описания
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -400,9 +450,11 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   exerciseDescription: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.TEXT_PRIMARY,
-    opacity: 0.7,
+    opacity: 0.8,
+    lineHeight: 18,
+    minHeight: 50, // Минимальная высота для 3 строк
   },
   startButtonContainer: {
     alignItems: 'center',
