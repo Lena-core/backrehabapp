@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StyleSheet } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 
 // Импорт экранов (будут созданы далее)
 import PainTrackerScreen from './src/screens/PainTrackerScreen';
@@ -21,34 +22,56 @@ const Stack = createStackNavigator<RootStackParamList>();
 function TabNavigator() {
   return (
     <Tab.Navigator
-      screenOptions={{
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName: string;
+
+          if (route.name === 'Home') {
+            iconName = 'home';
+          } else if (route.name === 'Profile') {
+            iconName = 'sentiment-satisfied';
+          } else if (route.name === 'Settings') {
+            iconName = 'settings';
+          } else {
+            iconName = 'help';
+          }
+
+          return <Icon name={iconName} size={size} color={color} />;
+        },
         tabBarActiveTintColor: COLORS.SECONDARY_ACCENT,
         tabBarInactiveTintColor: COLORS.TEXT_INACTIVE,
         tabBarStyle: {
           backgroundColor: COLORS.WHITE,
-          borderTopWidth: 0,
+          borderTopWidth: 1,
+          borderTopColor: COLORS.PRIMARY_ACCENT,
           elevation: 8,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.1,
           shadowRadius: 4,
+          height: 65,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
         },
         headerShown: false,
-      }}
+      })}
     >
       <Tab.Screen 
         name="Home" 
         component={DayPlanScreen}
         options={{
           title: 'План дня',
-          // Здесь можно добавить иконки когда они будут готовы
         }}
       />
       <Tab.Screen 
         name="Profile" 
         component={PainTrackerScreen}
         options={{
-          title: 'Трекер боли',
+          title: 'Самочувствие',
         }}
       />
       <Tab.Screen 
