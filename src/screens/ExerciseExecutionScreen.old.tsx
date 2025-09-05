@@ -27,6 +27,14 @@ interface TimerState {
   instruction: string;
 }
 
+// Альтернативные пути к анимационным файлам (для бэкапа)
+const EXERCISE_ANIMATIONS_URI: Record<ExerciseType, string> = {
+  curl_up: 'file:///android_asset/animations/curl_up.gif',
+  side_plank: 'file:///android_asset/animations/side_plank.gif', 
+  bird_dog: 'file:///android_asset/animations/bird_dog.gif',
+  walk: 'file:///android_asset/animations/walk.gif',
+};
+
 // Пути к анимационным файлам
 const EXERCISE_ANIMATIONS: Record<ExerciseType, any> = {
   curl_up: require('../assets/animations/curl_up.gif'),
@@ -98,6 +106,7 @@ const ExerciseExecutionScreen: React.FC = () => {
   const { exerciseType, exerciseName } = route.params;
 
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [session, setSession] = useState<ExerciseSession | null>(null);
   const [timer, setTimer] = useState<TimerState>({
     currentTime: 0,
     isRunning: false,
@@ -107,23 +116,45 @@ const ExerciseExecutionScreen: React.FC = () => {
     instruction: 'Приготовьтесь к выполнению упражнения',
   });
 
-  // Загрузка настроек
   useEffect(() => {
     loadSettings();
+    setupBackHandler();
   }, []);
 
-  // Логика таймера
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (timer.isRunning && timer.currentTime > 0) {
+    if (timer.isRunning) {
       interval = setInterval(() => {
-        setTimer(prev => ({ ...prev, currentTime: prev.currentTime - 1 }));
+        setTimer(prev => {
+          if (prev.currentTime <= 0) {
+            return handleTimerComplete(prev);
+          }
+          return { ...prev, currentTime: prev.currentTime - 1 };
+        });
       }, 1000);
-    } else if (timer.isRunning && timer.currentTime === 0) {
-      handleTimerComplete();
     }
     return () => clearInterval(interval);
-  }, [timer.isRunning, timer.currentTime]);
+  }, [timer.isRunning]);
+
+  const setupBackHandler = useCallback(() => {
+    const backAction = () => {
+      if (timer.isRunning) {
+        Alert.alert(
+          'Прервать упражнение?',
+          'Вы уверены, что хотите прервать выполнение упражнения?',
+          [
+            { text: 'Отмена', style: 'cancel' },
+            { text: 'Да', style: 'destructive', onPress: () => navigation.goBack() },
+          ]
+        );
+        return true;
+      }
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [timer.isRunning, navigation]);
 
   const loadSettings = async () => {
     try {
@@ -131,6 +162,7 @@ const ExerciseExecutionScreen: React.FC = () => {
       if (savedSettings) {
         setSettings(JSON.parse(savedSettings));
       } else {
+        // Настройки по умолчанию
         const defaultSettings: UserSettings = {
           exerciseSettings: {
             holdTime: 7,
@@ -143,78 +175,9 @@ const ExerciseExecutionScreen: React.FC = () => {
           },
         };
         setSettings(defaultSettings);
-        await AsyncStorage.setItem('userSettings', JSON.stringify(defaultSettings));
       }
     } catch (error) {
       console.error('Error loading settings:', error);
-    }
-  };
-
-  const handleTimerComplete = async () => {
-    if (timer.phase === 'prepare') {
-      setTimer(prev => ({
-        ...prev,
-        currentTime: settings?.exerciseSettings.holdTime || 7,
-        phase: 'exercise',
-        instruction: 'Выполняйте упражнение',
-      }));
-    } else if (timer.phase === 'exercise') {
-      const repsSchema = settings?.exerciseSettings.repsSchema || [3, 2, 1];
-      const isLastRep = timer.currentRep >= repsSchema[timer.currentSet - 1];
-      const isLastSet = timer.currentSet >= repsSchema.length;
-
-      if (isLastRep && isLastSet) {
-        // Упражнение завершено
-        setTimer(prev => ({
-          ...prev,
-          isRunning: false,
-          phase: 'completed',
-          instruction: 'Упражнение завершено!',
-        }));
-
-        // Сохранение прогресса
-        try {
-          const today = new Date().toISOString().split('T')[0];
-          const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
-          
-          if (savedExercises) {
-            const exercises = JSON.parse(savedExercises);
-            const updatedExercises = exercises.map((ex: any) =>
-              ex.id === exerciseType ? { ...ex, completed: true } : ex
-            );
-            await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
-          }
-        } catch (error) {
-          console.error('Error saving progress:', error);
-        }
-
-        setTimeout(() => navigation.goBack(), 2000);
-      } else if (isLastRep) {
-        // Переход к следующему подходу
-        setTimer(prev => ({
-          ...prev,
-          currentTime: settings?.exerciseSettings.restTime || 15,
-          phase: 'rest',
-          currentSet: prev.currentSet + 1,
-          currentRep: 1,
-          instruction: 'Отдых между подходами',
-        }));
-      } else {
-        // Следующее повторение
-        setTimer(prev => ({
-          ...prev,
-          currentTime: settings?.exerciseSettings.holdTime || 7,
-          currentRep: prev.currentRep + 1,
-          instruction: 'Продолжайте упражнение',
-        }));
-      }
-    } else if (timer.phase === 'rest') {
-      setTimer(prev => ({
-        ...prev,
-        currentTime: settings?.exerciseSettings.holdTime || 7,
-        phase: 'exercise',
-        instruction: 'Выполняйте упражнение',
-      }));
     }
   };
 
@@ -222,24 +185,165 @@ const ExerciseExecutionScreen: React.FC = () => {
     if (!settings) return;
 
     if (exerciseType === 'walk') {
-      const walkDurationInSeconds = settings.walkSettings.duration * 60;
+      const walkDurationInSeconds = settings.walkSettings.duration * 60; // конвертируем минуты в секунды
       setTimer({
         currentTime: walkDurationInSeconds,
         isRunning: true,
         phase: 'exercise',
         currentSet: 1,
         currentRep: 1,
-        instruction: 'Начните ходьбу. Держите спину ровно.',
+        instruction: 'Начните ходьбу. Держите спину ровно, смотрите прямо. Делайте короткие шаги.',
       });
     } else {
+      const totalSets = settings.exerciseSettings.repsSchema.length;
+      setSession({
+        exerciseId: exerciseType,
+        currentSet: 1,
+        totalSets,
+        currentRep: 1,
+        totalReps: settings.exerciseSettings.repsSchema[0],
+        isActive: true,
+        isResting: false,
+        completedSets: new Array(totalSets).fill(false),
+      });
+
       setTimer({
         currentTime: 3,
         isRunning: true,
         phase: 'prepare',
         currentSet: 1,
         currentRep: 1,
-        instruction: 'Приготовьтесь к выполнению упражнения',
+        instruction: getExerciseInstruction(exerciseType, 'prepare', 1, 1),
       });
+    }
+  };
+
+  const handleTimerComplete = (currentTimer: TimerState): TimerState => {
+    if (!settings || !session) {
+      // Для упражнения ходьбы session может быть null
+      if (exerciseType === 'walk') {
+        completeExercise();
+        return {
+          ...currentTimer,
+          isRunning: false,
+          phase: 'completed',
+          instruction: 'Упражнение завершено. Отлично поработали. Ходьба полезна для вашей спины!',
+        };
+      }
+      return currentTimer;
+    }
+
+    const { exerciseSettings } = settings;
+    const { repsSchema, holdTime, restTime } = exerciseSettings;
+
+    switch (currentTimer.phase) {
+      case 'prepare':
+        return {
+          ...currentTimer,
+          currentTime: holdTime,
+          phase: 'exercise',
+          instruction: getExerciseInstruction(exerciseType, 'exercise', currentTimer.currentSet, currentTimer.currentRep),
+        };
+
+      case 'exercise':
+        const isLastRep = currentTimer.currentRep >= repsSchema[currentTimer.currentSet - 1];
+        const isLastSet = currentTimer.currentSet >= repsSchema.length;
+
+        if (isLastRep && isLastSet) {
+          completeExercise();
+          return {
+            ...currentTimer,
+            isRunning: false,
+            phase: 'completed',
+            instruction: 'Упражнение завершено. Отлично поработали.',
+          };
+        } else if (isLastRep) {
+          // Переход к отдыху между подходами
+          return {
+            ...currentTimer,
+            currentTime: restTime,
+            phase: 'rest',
+            instruction: getRestInstruction(exerciseType),
+          };
+        } else {
+          // Следующее повторение
+          return {
+            ...currentTimer,
+            currentTime: holdTime,
+            currentRep: currentTimer.currentRep + 1,
+            instruction: getExerciseInstruction(exerciseType, 'exercise', currentTimer.currentSet, currentTimer.currentRep + 1),
+          };
+        }
+
+      case 'rest':
+        const nextSet = currentTimer.currentSet + 1;
+        return {
+          ...currentTimer,
+          currentTime: holdTime,
+          phase: 'exercise',
+          currentSet: nextSet,
+          currentRep: 1,
+          instruction: getExerciseInstruction(exerciseType, 'exercise', nextSet, 1),
+        };
+
+      default:
+        return currentTimer;
+    }
+  };
+
+  const getExerciseInstruction = (type: ExerciseType, phase: string, set: number, rep: number): string => {
+    const currentRepsSchema = settings?.exerciseSettings.repsSchema || [3, 2, 1];
+    const instructions: Record<ExerciseType, Record<string, string>> = {
+      curl_up: {
+        prepare: 'Примите исходное положение. Лягте на спину. Согните одну ногу, другую выпрямите. Руки под поясницей, ладонями вниз. Напрягите пресс. Приготовьтесь.',
+        exercise: set === 1 && rep === 1 ? 'Начните. Медленно поднимите голову и плечи.' : rep === currentRepsSchema[set - 1] ? 'Последнее повторение в этом подходе. Поднимите голову и плечи.' : 'Поднимите голову и плечи.',
+      },
+      side_plank: {
+        prepare: 'Примите исходное положение. Лягте на бок. Опирайтесь на локоть, расположенный под плечом. Ноги прямые. Приготовьтесь.',
+        exercise: set === 1 && rep === 1 ? 'Начните. Поднимите таз, выпрямляя тело в прямую линию.' : rep === currentRepsSchema[set - 1] ? 'Последнее повторение в этом подходе. Поднимите таз.' : 'Поднимите таз.',
+      },
+      bird_dog: {
+        prepare: 'Примите исходное положение на четвереньках. Руки под плечами, колени под бедрами. Спина ровная. Приготовьтесь.',
+        exercise: set === 1 && rep === 1 ? 'Начните. Поднимите правую руку и левую ногу.' : rep === currentRepsSchema[set - 1] ? 'Последнее повторение в этом подходе. Поднимите правую руку и левую ногу.' : rep % 2 === 1 ? 'Поднимите правую руку и левую ногу.' : 'Поднимите левую руку и правую ногу.',
+      },
+      walk: {
+        prepare: '',
+        exercise: 'Продолжайте ходьбу. Держите спину ровно.',
+      },
+    };
+
+    return instructions[type]?.[phase] || 'Выполняйте упражнение';
+  };
+
+  const getRestInstruction = (type: ExerciseType): string => {
+    const restInstructions: Record<ExerciseType, string> = {
+      curl_up: 'Отдых. Глубокий вдох.',
+      side_plank: 'Отдых. Перевернитесь на другой бок.',
+      bird_dog: 'Отдых. Глубокий вдох.',
+      walk: '',
+    };
+
+    return restInstructions[type] || 'Отдыхайте';
+  };
+
+  const completeExercise = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+      
+      if (savedExercises) {
+        const exercises = JSON.parse(savedExercises);
+        const updatedExercises = exercises.map((ex: any) =>
+          ex.id === exerciseType ? { ...ex, completed: true } : ex
+        );
+        await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
+      }
+
+      setTimeout(() => {
+        navigation.goBack();
+      }, 2000);
+    } catch (error) {
+      console.error('Error completing exercise:', error);
     }
   };
 
@@ -249,15 +353,7 @@ const ExerciseExecutionScreen: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (!settings) {
-    return (
-      <LinearGradient colors={GRADIENTS.MAIN_BACKGROUND} style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Загрузка...</Text>
-        </View>
-      </LinearGradient>
-    );
-  }
+  const repsSchema = settings?.exerciseSettings.repsSchema || [3, 2, 1];
 
   return (
     <LinearGradient colors={GRADIENTS.MAIN_BACKGROUND} style={styles.container}>
@@ -265,38 +361,23 @@ const ExerciseExecutionScreen: React.FC = () => {
         {/* Заголовок упражнения */}
         <Text style={styles.title}>{exerciseName}</Text>
 
-        {/* ТАЙМЕР И КНОПКА СТАРТ - ВЫНЕСЕНЫ НАВЕРХ */}
-        <View style={styles.timerContainer}>
-          <Text style={styles.timerText}>
-            {exerciseType === 'walk' 
-              ? formatTime(timer.currentTime)
-              : timer.currentTime.toString()
-            }
-          </Text>
-          <Text style={styles.instructionText}>{timer.instruction}</Text>
-        </View>
-
-        {/* Кнопка СТАРТ */}
-        {!timer.isRunning && timer.phase !== 'completed' && (
-          <TouchableOpacity style={styles.startButton} onPress={startExercise}>
-            <Text style={styles.startButtonText}>СТАРТ</Text>
-          </TouchableOpacity>
-        )}
-
         {/* Анимация упражнения */}
         <View style={styles.mediaContainer}>
           <Image 
             source={EXERCISE_ANIMATIONS[exerciseType] || DEFAULT_PLACEHOLDER}
             style={styles.exerciseAnimation}
             resizeMode="contain"
-            onError={() => console.log('Error loading animation for:', exerciseType)}
+            onError={() => {
+              console.log('Error loading animation for:', exerciseType);
+              // Можно добавить fallback к URI версии
+            }}
           />
         </View>
 
-        {/* Прогресс подходов */}
+        {/* Индикатор прогресса по подходам */}
         {exerciseType !== 'walk' && (
           <View style={styles.setsProgress}>
-            {Array.from({ length: settings.exerciseSettings.repsSchema.length }, (_, index) => (
+            {repsSchema.map((_, index) => (
               <View
                 key={index}
                 style={[
@@ -326,19 +407,19 @@ const ExerciseExecutionScreen: React.FC = () => {
             <View style={styles.parameter}>
               <Text style={styles.parameterLabel}>Время удержания</Text>
               <Text style={styles.parameterValue}>
-                {settings.exerciseSettings.holdTime} сек
+                {settings?.exerciseSettings.holdTime || 7} сек
               </Text>
             </View>
             <View style={styles.parameter}>
               <Text style={styles.parameterLabel}>Схема</Text>
               <Text style={styles.parameterValue}>
-                {settings.exerciseSettings.repsSchema.join('-')}
+                {repsSchema.join('-')}
               </Text>
             </View>
             <View style={styles.parameter}>
               <Text style={styles.parameterLabel}>Отдых</Text>
               <Text style={styles.parameterValue}>
-                {settings.exerciseSettings.restTime} сек
+                {settings?.exerciseSettings.restTime || 15} сек
               </Text>
             </View>
           </View>
@@ -347,16 +428,34 @@ const ExerciseExecutionScreen: React.FC = () => {
             <View style={styles.parameter}>
               <Text style={styles.parameterLabel}>Длительность сессии</Text>
               <Text style={styles.parameterValue}>
-                {settings.walkSettings.duration} мин
+                {settings?.walkSettings.duration || 5} мин
               </Text>
             </View>
             <View style={styles.parameter}>
               <Text style={styles.parameterLabel}>Количество сессий</Text>
               <Text style={styles.parameterValue}>
-                {settings.walkSettings.sessions}
+                {settings?.walkSettings.sessions || 3}
               </Text>
             </View>
           </View>
+        )}
+
+        {/* Таймер */}
+        <View style={styles.timerContainer}>
+          <Text style={styles.timerText}>
+            {exerciseType === 'walk' 
+              ? formatTime(timer.currentTime)
+              : timer.currentTime.toString()
+            }
+          </Text>
+          <Text style={styles.instructionText}>{timer.instruction}</Text>
+        </View>
+
+        {/* Кнопка СТАРТ */}
+        {!timer.isRunning && timer.phase !== 'completed' && (
+          <TouchableOpacity style={styles.startButton} onPress={startExercise}>
+            <Text style={styles.startButtonText}>СТАРТ</Text>
+          </TouchableOpacity>
         )}
 
         {/* Описание упражнения */}
@@ -385,68 +484,12 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 40,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 18,
-    color: COLORS.TEXT_PRIMARY,
-  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
     textAlign: 'center',
     marginBottom: 30,
-  },
-  timerContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
-    backgroundColor: COLORS.WHITE,
-    borderRadius: 20,
-    padding: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  timerText: {
-    fontSize: 56,
-    fontWeight: 'bold',
-    color: COLORS.PRIMARY_ACCENT,
-    marginBottom: 15,
-  },
-  instructionText: {
-    fontSize: 18,
-    color: COLORS.TEXT_PRIMARY,
-    textAlign: 'center',
-    lineHeight: 26,
-    paddingHorizontal: 20,
-    fontWeight: '500',
-  },
-  startButton: {
-    backgroundColor: COLORS.CTA_BUTTON,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: 40,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  startButtonText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-    letterSpacing: 1,
   },
   mediaContainer: {
     height: 200,
@@ -465,6 +508,11 @@ const styles = StyleSheet.create({
   exerciseAnimation: {
     width: '100%',
     height: '100%',
+  },
+  mediaPlaceholder: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.6,
   },
   setsProgress: {
     flexDirection: 'row',
@@ -508,6 +556,43 @@ const styles = StyleSheet.create({
   },
   parameterValue: {
     fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  timerContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  timerText: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: COLORS.PRIMARY_ACCENT,
+    marginBottom: 10,
+  },
+  instructionText: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
+    lineHeight: 24,
+    paddingHorizontal: 20,
+  },
+  startButton: {
+    backgroundColor: COLORS.CTA_BUTTON,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  startButtonText: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
   },
