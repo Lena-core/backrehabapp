@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,21 +9,67 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { PainLevel, Exercise, ExerciseType, RootStackParamList } from '../types';
+import { PainLevel, Exercise, ExerciseType, RootStackParamList, UserSettings } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
+import { useUserSettings } from '../hooks/useUserSettings';
 
 const { width } = Dimensions.get('window');
 
 type NavigationProp = StackNavigationProp<RootStackParamList, 'DayPlan'>;
 
-const EXERCISE_DATA: Record<ExerciseType, { name: string; gif: string; baseTime: number }> = {
-  curl_up: { name: 'Модифицированное скручивание', gif: 'curl_up.gif', baseTime: 180 },
-  side_plank: { name: 'Боковая планка', gif: 'side_plank.gif', baseTime: 180 },
-  bird_dog: { name: 'Птица-собака', gif: 'cat_dog_2.gif', baseTime: 180 },
-  walk: { name: 'Ходьба', gif: '', baseTime: 300 },
+const EXERCISE_DATA: Record<ExerciseType, { name: string; gif: string }> = {
+  curl_up: { name: 'Модифицированное скручивание', gif: 'curl_up.gif' },
+  side_plank: { name: 'Боковая планка', gif: 'side_plank.gif' },
+  bird_dog: { name: 'Птица-собака', gif: 'cat_dog_2.gif' },
+  walk: { name: 'Ходьба', gif: '' },
+};
+
+// Функция расчета времени выполнения упражнения
+const calculateExerciseTime = (exerciseType: ExerciseType, settings: UserSettings | null): number => {
+  if (!settings) return 180; // По умолчанию 3 минуты
+  
+  if (exerciseType === 'walk') {
+    return settings.walkSettings.duration * 60; // Минуты в секунды
+  }
+  
+  const { holdTime, repsSchema, restTime } = settings.exerciseSettings;
+  
+  // Рассчитываем общее время:
+  // - Время удержания для всех повторений
+  // - Время отдыха между подходами
+  // - Подготовка (примерно 30 секунд)
+  
+  const totalReps = repsSchema.reduce((sum, reps) => sum + reps, 0);
+  const totalSets = repsSchema.length;
+  
+  const exerciseTime = totalReps * holdTime; // Время выполнения
+  const restTimeTotal = (totalSets - 1) * restTime; // Отдых между подходами
+  const preparationTime = 30; // Подготовка
+  
+  return exerciseTime + restTimeTotal + preparationTime;
+};
+
+// Функция форматирования описания времени
+const formatExerciseDescription = (exerciseType: ExerciseType, settings: UserSettings | null): string => {
+  if (!settings) {
+    return exerciseType === 'walk' ? '5 мин' : '3 мин';
+  }
+  
+  if (exerciseType === 'walk') {
+    const { duration, sessions } = settings.walkSettings;
+    return sessions > 1 ? `${sessions} сессии по ${duration} мин` : `${duration} мин`;
+  }
+  
+  const totalTimeInSeconds = calculateExerciseTime(exerciseType, settings);
+  const minutes = Math.round(totalTimeInSeconds / 60);
+  
+  const { repsSchema } = settings.exerciseSettings;
+  const setsDescription = repsSchema.join('-');
+  
+  return `${minutes} мин (${setsDescription})`;
 };
 
 const PAIN_RECOMMENDATIONS: Record<PainLevel, string> = {
@@ -38,15 +84,12 @@ const PAIN_RECOMMENDATIONS: Record<PainLevel, string> = {
 
 const DayPlanScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+  const { settings, loading } = useUserSettings();
   const [currentPainLevel, setCurrentPainLevel] = useState<PainLevel>('none');
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<ExerciseType | null>(null);
 
-  useEffect(() => {
-    loadDayPlan();
-  }, []);
-
-  const loadDayPlan = async () => {
+  const loadDayPlan = useCallback(async () => {
     try {
       // Загружаем текущий уровень боли
       const today = new Date().toISOString().split('T')[0];
@@ -70,9 +113,14 @@ const DayPlanScreen: React.FC = () => {
 
       if (savedExercises) {
         dayExercises = JSON.parse(savedExercises);
+        // Обновляем описания на основе текущих настроек
+        dayExercises = dayExercises.map(exercise => ({
+          ...exercise,
+          description: formatExerciseDescription(exercise.id as ExerciseType, settings)
+        }));
       } else {
-        // Создаем план упражнений на основе уровня боли
-        dayExercises = createDayPlan(painLevel);
+        // Создаем план упражнений на основе уровня боли и настроек
+        dayExercises = createDayPlan(painLevel, settings);
         await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(dayExercises));
       }
 
@@ -80,18 +128,33 @@ const DayPlanScreen: React.FC = () => {
     } catch (error) {
       console.error('Error loading day plan:', error);
       // Fallback план
-      setExercises(createDayPlan('none'));
+      setExercises(createDayPlan('none', settings));
     }
-  };
+  }, [settings]);
 
-  const createDayPlan = (painLevel: PainLevel): Exercise[] => {
+  // Обновляем план при изменении настроек
+  useFocusEffect(
+    useCallback(() => {
+      if (settings) {
+        loadDayPlan();
+      }
+    }, [settings, loadDayPlan])
+  );
+
+  useEffect(() => {
+    if (settings) {
+      loadDayPlan();
+    }
+  }, [settings, loadDayPlan]);
+
+  const createDayPlan = (painLevel: PainLevel, userSettings: UserSettings | null = null): Exercise[] => {
     const plan: Exercise[] = [];
 
     if (painLevel !== 'acute') {
       plan.push({
         id: 'curl_up',
         name: EXERCISE_DATA.curl_up.name,
-        description: `${EXERCISE_DATA.curl_up.baseTime / 60} мин`,
+        description: formatExerciseDescription('curl_up', userSettings),
         completed: false,
         visible: true,
       });
@@ -99,7 +162,7 @@ const DayPlanScreen: React.FC = () => {
       plan.push({
         id: 'side_plank',
         name: EXERCISE_DATA.side_plank.name,
-        description: `${EXERCISE_DATA.side_plank.baseTime / 60} мин`,
+        description: formatExerciseDescription('side_plank', userSettings),
         completed: false,
         visible: true,
       });
@@ -107,7 +170,7 @@ const DayPlanScreen: React.FC = () => {
       plan.push({
         id: 'bird_dog',
         name: EXERCISE_DATA.bird_dog.name,
-        description: `${EXERCISE_DATA.bird_dog.baseTime / 60} мин`,
+        description: formatExerciseDescription('bird_dog', userSettings),
         completed: false,
         visible: true,
       });
@@ -116,7 +179,7 @@ const DayPlanScreen: React.FC = () => {
     plan.push({
       id: 'walk',
       name: EXERCISE_DATA.walk.name,
-      description: painLevel === 'acute' ? 'По состоянию' : '3 сессии по 5 мин',
+      description: painLevel === 'acute' ? 'По состоянию' : formatExerciseDescription('walk', userSettings),
       completed: false,
       visible: true,
     });
@@ -135,6 +198,17 @@ const DayPlanScreen: React.FC = () => {
     const exercise = exercises.find(ex => ex.id === exerciseId);
     return exercise?.completed || false;
   };
+
+  // Отображаем индикатор загрузки пока настройки загружаются
+  if (loading) {
+    return (
+      <LinearGradient colors={GRADIENTS.CONTENT_BACKGROUND} style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Загрузка плана...</Text>
+        </View>
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient colors={GRADIENTS.CONTENT_BACKGROUND} style={styles.container}>
@@ -231,6 +305,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 60,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 18,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.7,
   },
   title: {
     fontSize: 28,
