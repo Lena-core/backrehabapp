@@ -95,14 +95,7 @@ function App(): JSX.Element {
           name="ExerciseExecution" 
           component={ExerciseExecutionScreen}
           options={{
-            headerShown: true,
-            title: '',
-            headerStyle: {
-              backgroundColor: COLORS.WHITE,
-              elevation: 0,
-              shadowOpacity: 0,
-            },
-            headerTintColor: COLORS.TEXT_PRIMARY,
+            headerShown: false,
           }}
         />
       </Stack.Navigator>

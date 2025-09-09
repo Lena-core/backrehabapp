@@ -9,6 +9,7 @@ import {
   BackHandler,
   Image,
   Modal,
+  Dimensions,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,6 +19,8 @@ import { ExerciseType, ExerciseSession, UserSettings, RootStackParamList } from 
 import { COLORS, GRADIENTS } from '../constants/colors';
 import { EXERCISE_DESCRIPTIONS } from '../constants/exercises/descriptions';
 import { useSounds } from '../hooks';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 type ExerciseExecutionRouteProp = RouteProp<RootStackParamList, 'ExerciseExecution'>;
 
@@ -233,10 +236,26 @@ const ExerciseExecutionScreen: React.FC = () => {
   }
 
   return (
-    <LinearGradient colors={GRADIENTS.MAIN_BACKGROUND} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Заголовок упражнения с иконкой информации */}
+    <View style={styles.container}>
+      {/* Фоновая гифка на весь экран */}
+      <View style={styles.gifContainer}>
+        <Image
+          source={EXERCISE_ANIMATIONS[exerciseType] || DEFAULT_PLACEHOLDER}
+          style={styles.backgroundGif}
+          resizeMode="contain"
+        />
+      </View>
+      
+      <View style={styles.contentOverlay}>
+        {/* Заголовок упражнения с иконкой информации - ВВЕРХУ */}
         <View style={styles.headerContainer}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>←</Text>
+          </TouchableOpacity>
+          
           <TouchableOpacity 
             style={styles.titleWithInfoContainer}
             onPress={() => setShowDescriptionModal(true)}
@@ -244,6 +263,7 @@ const ExerciseExecutionScreen: React.FC = () => {
             <Text style={styles.title}>{exerciseName}</Text>
             <Text style={styles.infoIcon}>ⓘ</Text>
           </TouchableOpacity>
+          
           <TouchableOpacity 
             style={[styles.soundToggle, { backgroundColor: isSoundEnabled ? COLORS.PRIMARY_ACCENT : COLORS.SECONDARY_ACCENT }]}
             onPress={toggleSoundEnabled}
@@ -254,106 +274,105 @@ const ExerciseExecutionScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* ТАЙМЕР И КНОПКА СТАРТ - ВЫНЕСЕНЫ НАВЕРХ */}
-        <View style={styles.timerContainer}>
-          <Text style={styles.timerText}>
-            {exerciseType === 'walk' 
-              ? formatTime(timer.currentTime)
-              : timer.currentTime.toString()
-            }
+        {/* Нижний контент */}
+        <View style={styles.bottomContent}>
+          {/* КНОПКА СТАРТ (показывается до начала упражнения) */}
+          {timer.phase === 'prepare' && !timer.isRunning && (
+            <View style={styles.timerContainer}>
+              <TouchableOpacity style={styles.startButton} onPress={startExercise}>
+                <Text style={styles.startButtonText}>СТАРТ</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* ТАЙМЕР (показывается после нажатия СТАРТ) */}
+          {(timer.isRunning || timer.phase === 'completed') && (
+            <View style={styles.timerContainer}>
+              <Text style={styles.timerText}>
+                {exerciseType === 'walk' 
+                  ? formatTime(timer.currentTime)
+                  : timer.currentTime.toString()
+                }
+              </Text>
+              <Text style={styles.instructionText}>{timer.instruction}</Text>
+            </View>
+          )}
+
+          {/* Прогресс подходов */}
+          {exerciseType !== 'walk' && (
+            <View style={styles.setsProgress}>
+              {Array.from({ length: settings.exerciseSettings.repsSchema.length }, (_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.setCircle,
+                    {
+                      backgroundColor: 
+                        index < timer.currentSet - 1 || timer.phase === 'completed'
+                          ? COLORS.PRIMARY_ACCENT
+                          : index === timer.currentSet - 1
+                          ? COLORS.PRIMARY_ACCENT
+                          : COLORS.WHITE,
+                      borderColor: COLORS.PRIMARY_ACCENT,
+                    },
+                  ]}
+                >
+                  {index < timer.currentSet - 1 && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Параметры упражнения */}
+          <View style={styles.parametersContainer}>
+            {exerciseType !== 'walk' ? (
+              <>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Время удержания</Text>
+                  <Text style={styles.parameterValue}>
+                    {settings.exerciseSettings.holdTime} сек
+                  </Text>
+                </View>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Схема</Text>
+                  <Text style={styles.parameterValue}>
+                    {settings.exerciseSettings.repsSchema.join('-')}
+                  </Text>
+                </View>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Отдых</Text>
+                  <Text style={styles.parameterValue}>
+                    {settings.exerciseSettings.restTime} сек
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Длительность сессии</Text>
+                  <Text style={styles.parameterValue}>
+                    {settings.walkSettings.duration} мин
+                  </Text>
+                </View>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Количество сессий</Text>
+                  <Text style={styles.parameterValue}>
+                    {settings.walkSettings.sessions}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+
+          {/* Медицинское предупреждение */}
+          <Text style={styles.disclaimer}>
+            Приведенная информация носит справочный характер. Если вам требуется 
+            медицинская консультация или постановка диагноза, обратитесь к специалисту.
           </Text>
-          <Text style={styles.instructionText}>{timer.instruction}</Text>
         </View>
-
-        {/* Кнопка СТАРТ */}
-        {!timer.isRunning && timer.phase !== 'completed' && (
-          <TouchableOpacity style={styles.startButton} onPress={startExercise}>
-            <Text style={styles.startButtonText}>СТАРТ</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Анимация упражнения */}
-        <View style={styles.mediaContainer}>
-          <Image 
-            source={EXERCISE_ANIMATIONS[exerciseType] || DEFAULT_PLACEHOLDER}
-            style={styles.exerciseAnimation}
-            resizeMode="contain"
-            onError={() => console.log('Error loading animation for:', exerciseType)}
-          />
-        </View>
-
-        {/* Прогресс подходов */}
-        {exerciseType !== 'walk' && (
-          <View style={styles.setsProgress}>
-            {Array.from({ length: settings.exerciseSettings.repsSchema.length }, (_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.setCircle,
-                  {
-                    backgroundColor: 
-                      index < timer.currentSet - 1 || timer.phase === 'completed'
-                        ? COLORS.PRIMARY_ACCENT
-                        : index === timer.currentSet - 1
-                        ? COLORS.PRIMARY_ACCENT
-                        : COLORS.WHITE,
-                    borderColor: COLORS.PRIMARY_ACCENT,
-                  },
-                ]}
-              >
-                {index < timer.currentSet - 1 && (
-                  <Text style={styles.checkmark}>✓</Text>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Параметры упражнения */}
-        {exerciseType !== 'walk' ? (
-          <View style={styles.parametersContainer}>
-            <View style={styles.parameter}>
-              <Text style={styles.parameterLabel}>Время удержания</Text>
-              <Text style={styles.parameterValue}>
-                {settings.exerciseSettings.holdTime} сек
-              </Text>
-            </View>
-            <View style={styles.parameter}>
-              <Text style={styles.parameterLabel}>Схема</Text>
-              <Text style={styles.parameterValue}>
-                {settings.exerciseSettings.repsSchema.join('-')}
-              </Text>
-            </View>
-            <View style={styles.parameter}>
-              <Text style={styles.parameterLabel}>Отдых</Text>
-              <Text style={styles.parameterValue}>
-                {settings.exerciseSettings.restTime} сек
-              </Text>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.parametersContainer}>
-            <View style={styles.parameter}>
-              <Text style={styles.parameterLabel}>Длительность сессии</Text>
-              <Text style={styles.parameterValue}>
-                {settings.walkSettings.duration} мин
-              </Text>
-            </View>
-            <View style={styles.parameter}>
-              <Text style={styles.parameterLabel}>Количество сессий</Text>
-              <Text style={styles.parameterValue}>
-                {settings.walkSettings.sessions}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Медицинское предупреждение */}
-        <Text style={styles.disclaimer}>
-          Приведенная информация носит справочный характер. Если вам требуется 
-          медицинская консультация или постановка диагноза, обратитесь к специалисту.
-        </Text>
-      </ScrollView>
+      </View>
 
       {/* Модальное окно с описанием упражнения */}
       <Modal
@@ -389,7 +408,7 @@ const ExerciseExecutionScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
-    </LinearGradient>
+    </View>
   );
 };
 
@@ -397,10 +416,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 40,
+  gifContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: screenWidth,
+    height: screenHeight,
+  },
+  backgroundGif: {
+    width: screenWidth,
+    height: screenHeight,
+    position: 'absolute',
+    top: 0,
+  },
+  contentOverlay: {
+    flex: 1,
+    position: 'relative',
   },
   loadingContainer: {
     flex: 1,
@@ -412,34 +443,61 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
   },
   headerContainer: {
+    position: 'absolute',
+    top: 10,
+    left: 20,
+    right: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 30,
-    paddingHorizontal: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    paddingTop: 20,
+  },
+  backButton: {
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backButtonText: {
+    fontSize: 24,
+    color: COLORS.WHITE,
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   titleWithInfoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
+    marginHorizontal: 10,
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
+    color: COLORS.WHITE,
     textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   infoIcon: {
     fontSize: 16,
-    color: COLORS.TEXT_PRIMARY,
-    opacity: 0.6,
+    color: COLORS.WHITE,
     marginLeft: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   soundToggle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -449,33 +507,40 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   soundToggleText: {
-    fontSize: 24,
+    fontSize: 20,
+  },
+  bottomContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingBottom: 30,
   },
   timerContainer: {
     alignItems: 'center',
-    marginBottom: 30,
-    backgroundColor: COLORS.WHITE,
-    borderRadius: 20,
-    padding: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 6,
+    marginTop: 30,
+    marginBottom: 20,
   },
   timerText: {
     fontSize: 56,
     fontWeight: 'bold',
-    color: COLORS.PRIMARY_ACCENT,
-    marginBottom: 15,
+    color: COLORS.WHITE,
+    marginBottom: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
   },
   instructionText: {
-    fontSize: 18,
-    color: COLORS.TEXT_PRIMARY,
+    fontSize: 16,
+    color: COLORS.WHITE,
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 22,
     paddingHorizontal: 20,
     fontWeight: '500',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   startButton: {
     backgroundColor: COLORS.CTA_BUTTON,
@@ -484,8 +549,6 @@ const styles = StyleSheet.create({
     borderRadius: 60,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: 40,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
@@ -498,75 +561,64 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     letterSpacing: 1,
   },
-  mediaContainer: {
-    height: 200,
-    backgroundColor: COLORS.WHITE,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    overflow: 'hidden',
-  },
-  exerciseAnimation: {
-    width: '100%',
-    height: '100%',
-  },
   setsProgress: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: 30,
+    marginBottom: 20,
   },
   setCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 35,
+    height: 35,
+    borderRadius: 17.5,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 5,
+    marginHorizontal: 4,
   },
   checkmark: {
     color: COLORS.WHITE,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
   },
   parametersContainer: {
-    backgroundColor: COLORS.WHITE,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     borderRadius: 15,
-    padding: 20,
-    marginBottom: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    padding: 15,
+    marginBottom: 15,
   },
   parameter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   parameterLabel: {
-    fontSize: 16,
-    color: COLORS.TEXT_PRIMARY,
+    fontSize: 14,
+    color: COLORS.WHITE,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   parameterValue: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
+    color: COLORS.WHITE,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   disclaimer: {
-    fontSize: 11,
-    color: COLORS.TEXT_PRIMARY,
+    fontSize: 10,
+    color: COLORS.WHITE,
     textAlign: 'center',
-    lineHeight: 16,
-    opacity: 0.7,
+    lineHeight: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   // Стили для модального окна
   modalOverlay: {
