@@ -15,6 +15,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 
 import { ExerciseType, ExerciseSession, UserSettings, RootStackParamList } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
+import { useSounds } from '../hooks';
 
 type ExerciseExecutionRouteProp = RouteProp<RootStackParamList, 'ExerciseExecution'>;
 
@@ -97,6 +98,9 @@ const ExerciseExecutionScreen: React.FC = () => {
   const route = useRoute<ExerciseExecutionRouteProp>();
   const { exerciseType, exerciseName } = route.params;
 
+  // Хук для управления звуками
+  const { playSound, isSoundEnabled, toggleSoundEnabled } = useSounds();
+
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [timer, setTimer] = useState<TimerState>({
     currentTime: 0,
@@ -125,6 +129,21 @@ const ExerciseExecutionScreen: React.FC = () => {
     return () => clearInterval(interval);
   }, [timer.isRunning, timer.currentTime]);
 
+  // Звуковые сигналы во время таймера
+  useEffect(() => {
+    if (!timer.isRunning || timer.currentTime <= 0) return;
+
+    // Предупреждающий звук за 3 секунды до конца
+    if (timer.currentTime === 3 && (timer.phase === 'exercise' || timer.phase === 'rest')) {
+      playSound('warning', 0.7);
+    }
+
+    // Звук каждой секунды для последних 3 секунд (опционально)
+    if (timer.currentTime <= 3 && timer.currentTime > 0 && timer.phase === 'prepare') {
+      playSound('tick', 0.8);
+    }
+  }, [timer.currentTime, timer.isRunning, timer.phase, playSound]);
+
   const loadSettings = async () => {
     try {
       const savedSettings = await AsyncStorage.getItem('userSettings');
@@ -152,6 +171,7 @@ const ExerciseExecutionScreen: React.FC = () => {
 
   const handleTimerComplete = async () => {
     if (timer.phase === 'prepare') {
+      playSound('start'); // Звук начала упражнения
       setTimer(prev => ({
         ...prev,
         currentTime: settings?.exerciseSettings.holdTime || 7,
@@ -165,6 +185,7 @@ const ExerciseExecutionScreen: React.FC = () => {
 
       if (isLastRep && isLastSet) {
         // Упражнение завершено
+        playSound('complete'); // Звук завершения
         setTimer(prev => ({
           ...prev,
           isRunning: false,
@@ -191,6 +212,7 @@ const ExerciseExecutionScreen: React.FC = () => {
         setTimeout(() => navigation.goBack(), 2000);
       } else if (isLastRep) {
         // Переход к следующему подходу
+        playSound('rest'); // Звук перехода к отдыху
         setTimer(prev => ({
           ...prev,
           currentTime: settings?.exerciseSettings.restTime || 15,
@@ -209,6 +231,7 @@ const ExerciseExecutionScreen: React.FC = () => {
         }));
       }
     } else if (timer.phase === 'rest') {
+      playSound('nextSet'); // Звук перехода к следующему подходу
       setTimer(prev => ({
         ...prev,
         currentTime: settings?.exerciseSettings.holdTime || 7,
@@ -232,6 +255,7 @@ const ExerciseExecutionScreen: React.FC = () => {
         instruction: 'Начните ходьбу. Держите спину ровно.',
       });
     } else {
+      playSound('prepare'); // Звук начала подготовки
       setTimer({
         currentTime: 3,
         isRunning: true,
@@ -263,7 +287,17 @@ const ExerciseExecutionScreen: React.FC = () => {
     <LinearGradient colors={GRADIENTS.MAIN_BACKGROUND} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Заголовок упражнения */}
-        <Text style={styles.title}>{exerciseName}</Text>
+        <View style={styles.headerContainer}>
+          <Text style={styles.title}>{exerciseName}</Text>
+          <TouchableOpacity 
+            style={[styles.soundToggle, { backgroundColor: isSoundEnabled ? COLORS.PRIMARY_ACCENT : COLORS.SECONDARY_ACCENT }]}
+            onPress={toggleSoundEnabled}
+          >
+            <Text style={styles.soundToggleText}>
+              {isSoundEnabled ? '🔊' : '🔇'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {/* ТАЙМЕР И КНОПКА СТАРТ - ВЫНЕСЕНЫ НАВЕРХ */}
         <View style={styles.timerContainer}>
@@ -394,12 +428,34 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: COLORS.TEXT_PRIMARY,
   },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 30,
+    paddingHorizontal: 10,
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
+    flex: 1,
     textAlign: 'center',
-    marginBottom: 30,
+  },
+  soundToggle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  soundToggleText: {
+    fontSize: 24,
   },
   timerContainer: {
     alignItems: 'center',
