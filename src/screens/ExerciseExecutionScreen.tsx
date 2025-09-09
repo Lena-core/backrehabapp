@@ -8,6 +8,7 @@ import {
   Alert,
   BackHandler,
   Image,
+  Modal,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -15,6 +16,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 
 import { ExerciseType, ExerciseSession, UserSettings, RootStackParamList } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
+import { EXERCISE_DESCRIPTIONS } from '../constants/exercises/descriptions';
 import { useSounds } from '../hooks';
 
 type ExerciseExecutionRouteProp = RouteProp<RootStackParamList, 'ExerciseExecution'>;
@@ -39,60 +41,6 @@ const EXERCISE_ANIMATIONS: Record<ExerciseType, any> = {
 // По умолчанию для ошибок загрузки
 const DEFAULT_PLACEHOLDER = require('../assets/animations/curl_up.gif');
 
-const EXERCISE_DESCRIPTIONS: Record<ExerciseType, string> = {
-  curl_up: `Это упражнение предназначено для тренировки прямой мышцы живота (rectus abdominis). Оно помогает укрепить корпус, обеспечивая при этом минимальную нагрузку на позвоночник.
-
-Исходное положение:
-1. Лягте на спину на ровную, твердую поверхность.
-2. Согните одну ногу в колене так, чтобы стопа стояла на полу.
-3. Разместите обе руки под поясницей ладонями вниз.
-
-Техника выполнения:
-1. Напрягите мышцы кора, как будто готовитесь к удару в живот.
-2. На выдохе медленно приподнимите голову и плечи от пола.
-3. Поднимайтесь только на несколько сантиметров.
-4. Избегайте сгибания шеи и не отрывайте поясницу от пола.
-5. Задержитесь в верхней точке на 8 секунд.`,
-
-  side_plank: `Это упражнение эффективно укрепляет мышцы-стабилизаторы корпуса, оберегая позвоночник от высоких нагрузок.
-
-Исходное положение:
-1. Лягте на бок, опираясь на локоть и предплечье.
-2. Локоть должен находиться строго под плечом.
-3. Ноги выпрямите.
-
-Техника выполнения:
-1. Создайте напряжение в мышцах живота.
-2. Медленно поднимите бедра от пола.
-3. Ваше тело должно образовать прямую линию от головы до пяток.
-4. Не прогибайтесь в пояснице и не позволяйте тазу опускаться.
-5. Задержитесь в этом положении на 8 секунд.`,
-
-  bird_dog: `Это упражнение помогает повысить выносливость мышц кора, обеспечивая стабильность позвоночника.
-
-Исходное положение:
-1. Встаньте на четвереньки.
-2. Руки строго под плечами, колени под бедрами.
-3. Спина в нейтральном положении.
-
-Техника выполнения:
-1. Напрягите мышцы кора.
-2. Медленно вытяните одну руку вперед, а противоположную ногу назад.
-3. Не поднимайте конечности слишком высоко.
-4. Не допускайте поворота или наклона таза или плеч.
-5. Задержитесь в этом положении на 8 секунд.`,
-
-  walk: `Ходьба позволяет обеспечить питание межпозвонковых дисков и восстановить их здоровье.
-
-Техника выполнения:
-1. Держите спину прямо в нейтральном положении.
-2. Делайте короткие, но быстрые шаги.
-3. Двигайте руками в такт ходьбе.
-4. Смотрите прямо перед собой.
-
-Длительность: Начните с коротких прогулок по 5-10 минут. Важно, чтобы ходьба не вызывала боль.`,
-};
-
 const ExerciseExecutionScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<ExerciseExecutionRouteProp>();
@@ -102,6 +50,7 @@ const ExerciseExecutionScreen: React.FC = () => {
   const { playSound, isSoundEnabled, toggleSoundEnabled } = useSounds();
 
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [showDescriptionModal, setShowDescriptionModal] = useState(false);
   const [timer, setTimer] = useState<TimerState>({
     currentTime: 0,
     isRunning: false,
@@ -286,9 +235,15 @@ const ExerciseExecutionScreen: React.FC = () => {
   return (
     <LinearGradient colors={GRADIENTS.MAIN_BACKGROUND} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Заголовок упражнения */}
+        {/* Заголовок упражнения с иконкой информации */}
         <View style={styles.headerContainer}>
-          <Text style={styles.title}>{exerciseName}</Text>
+          <TouchableOpacity 
+            style={styles.titleWithInfoContainer}
+            onPress={() => setShowDescriptionModal(true)}
+          >
+            <Text style={styles.title}>{exerciseName}</Text>
+            <Text style={styles.infoIcon}>ⓘ</Text>
+          </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.soundToggle, { backgroundColor: isSoundEnabled ? COLORS.PRIMARY_ACCENT : COLORS.SECONDARY_ACCENT }]}
             onPress={toggleSoundEnabled}
@@ -393,19 +348,47 @@ const ExerciseExecutionScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Описание упражнения */}
-        <View style={styles.descriptionContainer}>
-          <Text style={styles.descriptionText}>
-            {EXERCISE_DESCRIPTIONS[exerciseType]}
-          </Text>
-        </View>
-
         {/* Медицинское предупреждение */}
         <Text style={styles.disclaimer}>
           Приведенная информация носит справочный характер. Если вам требуется 
           медицинская консультация или постановка диагноза, обратитесь к специалисту.
         </Text>
       </ScrollView>
+
+      {/* Модальное окно с описанием упражнения */}
+      <Modal
+        visible={showDescriptionModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowDescriptionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ScrollView showsVerticalScrollIndicator={true}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Описание упражнения</Text>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setShowDescriptionModal(false)}
+                >
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={styles.modalDescriptionText}>
+                {EXERCISE_DESCRIPTIONS[exerciseType]}
+              </Text>
+              
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setShowDescriptionModal(false)}
+              >
+                <Text style={styles.modalCloseButtonText}>Закрыть</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 };
@@ -435,12 +418,23 @@ const styles = StyleSheet.create({
     marginBottom: 30,
     paddingHorizontal: 10,
   },
+  titleWithInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
-    flex: 1,
     textAlign: 'center',
+  },
+  infoIcon: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.6,
+    marginLeft: 10,
   },
   soundToggle: {
     width: 50,
@@ -567,28 +561,80 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
   },
-  descriptionContainer: {
-    backgroundColor: COLORS.WHITE,
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  descriptionText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: COLORS.TEXT_PRIMARY,
-  },
   disclaimer: {
     fontSize: 11,
     color: COLORS.TEXT_PRIMARY,
     textAlign: 'center',
     lineHeight: 16,
     opacity: 0.7,
+  },
+  // Стили для модального окна
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContent: {
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 20,
+    padding: 0,
+    maxHeight: '80%',
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.SCALE_COLOR,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  closeButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.SCALE_COLOR,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+    fontWeight: 'bold',
+  },
+  modalDescriptionText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: COLORS.TEXT_PRIMARY,
+    padding: 20,
+  },
+  modalCloseButton: {
+    backgroundColor: COLORS.CTA_BUTTON,
+    paddingVertical: 12,
+    paddingHorizontal: 40,
+    borderRadius: 25,
+    alignSelf: 'center',
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
+  modalCloseButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
   },
 });
 
