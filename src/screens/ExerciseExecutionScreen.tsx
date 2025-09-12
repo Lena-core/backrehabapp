@@ -27,11 +27,13 @@ type ExerciseExecutionRouteProp = RouteProp<RootStackParamList, 'ExerciseExecuti
 interface TimerState {
   currentTime: number;
   isRunning: boolean;
-  phase: 'prepare' | 'exercise' | 'miniRest' | 'rest' | 'completed';
+  phase: 'prepare' | 'exercise' | 'miniRest' | 'rest' | 'completed' | 'schemeCompleted';
   currentSet: number;
   currentRep: number;
   instruction: string;
   holdSoundPlayed: boolean;
+  currentScheme: 1 | 2; // Для bird_dog: 1 = левая рука+правая нога, 2 = правая рука+левая нога
+  schemeOneCompleted: boolean; // Завершена ли первая схема
 }
 
 // Пути к анимационным файлам
@@ -66,9 +68,14 @@ const EXERCISE_INSTRUCTIONS: Record<ExerciseType, Record<string, string>> = {
   bird_dog: {
     prepare: 'Приготовьтесь',
     start: 'Поднимите руку и ногу',
+    startScheme1: 'Поднимите левую руку и правую ногу',
+    startScheme2: 'Поднимите правую руку и левую ногу',
     hold: 'Удерживайте положение',
     miniRest: 'Опустите руку и ногу',
+    miniRestScheme1: 'Опустите левую руку и правую ногу',
+    miniRestScheme2: 'Опустите правую руку и левую ногу',
     rest: 'Отдых',
+    schemeCompleted: 'Первая схема завершена! Нажмите СТАРТ для второй схемы',
     completed: 'Упражнение завершено!'
   },
   // Для walk - старые надписи остаются
@@ -100,6 +107,8 @@ const ExerciseExecutionScreen: React.FC = () => {
     currentRep: 1,
     instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
     holdSoundPlayed: false,
+    currentScheme: 1,
+    schemeOneCompleted: false,
   });
 
   // Загрузка настроек
@@ -206,12 +215,18 @@ const ExerciseExecutionScreen: React.FC = () => {
     if (timer.phase === 'prepare') {
       // Переход от подготовки к упражнению
       playSound('start');
+      const instruction = exerciseType === 'bird_dog' 
+        ? (timer.currentScheme === 1 
+            ? EXERCISE_INSTRUCTIONS[exerciseType].startScheme1 
+            : EXERCISE_INSTRUCTIONS[exerciseType].startScheme2)
+        : EXERCISE_INSTRUCTIONS[exerciseType].start;
+      
       setTimer(prev => ({
         ...prev,
         currentTime: holdTime,
         phase: 'exercise',
-        instruction: EXERCISE_INSTRUCTIONS[exerciseType].start,
-        holdSoundPlayed: false, // Сброс флага
+        instruction,
+        holdSoundPlayed: false,
       }));
     } 
     else if (timer.phase === 'exercise') {
@@ -220,33 +235,47 @@ const ExerciseExecutionScreen: React.FC = () => {
       const isLastSet = timer.currentSet >= repsSchema.length;
 
       if (isLastRep && isLastSet) {
-        // Все упражнения завершены
-        playSound('completed');
-        setTimer(prev => ({
-          ...prev,
-          isRunning: false,
-          phase: 'completed',
-          currentTime: 0,
-          instruction: EXERCISE_INSTRUCTIONS[exerciseType].completed,
-        }));
+        // Последняя схема завершена
+        if (exerciseType === 'bird_dog' && timer.currentScheme === 1) {
+          // Первая схема bird_dog завершена
+          playSound('rest');
+          setTimer(prev => ({
+            ...prev,
+            isRunning: false,
+            phase: 'schemeCompleted',
+            currentTime: 0,
+            instruction: EXERCISE_INSTRUCTIONS[exerciseType].schemeCompleted,
+            schemeOneCompleted: true,
+          }));
+        } else {
+          // Все упражнения завершены
+          playSound('completed');
+          setTimer(prev => ({
+            ...prev,
+            isRunning: false,
+            phase: 'completed',
+            currentTime: 0,
+            instruction: EXERCISE_INSTRUCTIONS[exerciseType].completed,
+          }));
 
-        // Сохранение прогресса
-        try {
-          const today = new Date().toISOString().split('T')[0];
-          const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
-          
-          if (savedExercises) {
-            const exercises = JSON.parse(savedExercises);
-            const updatedExercises = exercises.map((ex: any) =>
-              ex.id === exerciseType ? { ...ex, completed: true } : ex
-            );
-            await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
+          // Сохранение прогресса
+          try {
+            const today = new Date().toISOString().split('T')[0];
+            const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+            
+            if (savedExercises) {
+              const exercises = JSON.parse(savedExercises);
+              const updatedExercises = exercises.map((ex: any) =>
+                ex.id === exerciseType ? { ...ex, completed: true } : ex
+              );
+              await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
+            }
+          } catch (error) {
+            console.error('Error saving progress:', error);
           }
-        } catch (error) {
-          console.error('Error saving progress:', error);
-        }
 
-        setTimeout(() => navigation.goBack(), 2000);
+          setTimeout(() => navigation.goBack(), 2000);
+        }
       } 
       else if (isLastRep) {
         // Последнее повторение в подходе, переход к отдыху между подходами
@@ -261,23 +290,35 @@ const ExerciseExecutionScreen: React.FC = () => {
       else {
         // Не последнее повторение, переход к мини-отдыху
         playSound('finish');
+        const instruction = exerciseType === 'bird_dog' 
+          ? (timer.currentScheme === 1 
+              ? EXERCISE_INSTRUCTIONS[exerciseType].miniRestScheme1 
+              : EXERCISE_INSTRUCTIONS[exerciseType].miniRestScheme2)
+          : EXERCISE_INSTRUCTIONS[exerciseType].miniRest;
+        
         setTimer(prev => ({
           ...prev,
-          currentTime: 3, // Мини-отдых всегда 3 секунды
+          currentTime: 3,
           phase: 'miniRest',
-          instruction: EXERCISE_INSTRUCTIONS[exerciseType].miniRest,
+          instruction,
         }));
       }
     } 
     else if (timer.phase === 'miniRest') {
       // Мини-отдых завершен, переход к следующему повторению
       playSound('start');
+      const instruction = exerciseType === 'bird_dog' 
+        ? (timer.currentScheme === 1 
+            ? EXERCISE_INSTRUCTIONS[exerciseType].startScheme1 
+            : EXERCISE_INSTRUCTIONS[exerciseType].startScheme2)
+        : EXERCISE_INSTRUCTIONS[exerciseType].start;
+      
       setTimer(prev => ({
         ...prev,
         currentTime: holdTime,
         phase: 'exercise',
         currentRep: prev.currentRep + 1,
-        instruction: EXERCISE_INSTRUCTIONS[exerciseType].start,
+        instruction,
         holdSoundPlayed: false,
       }));
     } 
@@ -286,7 +327,7 @@ const ExerciseExecutionScreen: React.FC = () => {
       playSound('prepare');
       setTimer(prev => ({
         ...prev,
-        currentTime: 5, // Подготовка всегда 5 секунд
+        currentTime: 5,
         phase: 'prepare',
         currentSet: prev.currentSet + 1,
         currentRep: 1,
@@ -310,7 +351,23 @@ const ExerciseExecutionScreen: React.FC = () => {
         currentRep: 1,
         instruction: 'Начните ходьбу. Держите спину ровно.',
         holdSoundPlayed: false,
+        currentScheme: 1,
+        schemeOneCompleted: false,
       });
+    } else if (exerciseType === 'bird_dog' && timer.schemeOneCompleted) {
+      // Начало второй схемы bird_dog
+      playSound('prepare');
+      setTimer(prev => ({
+        ...prev,
+        currentTime: 5,
+        isRunning: true,
+        phase: 'prepare',
+        currentSet: 1,
+        currentRep: 1,
+        currentScheme: 2,
+        instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
+        holdSoundPlayed: false,
+      }));
     } else {
       // Для остальных упражнений - новая логика с подготовкой
       playSound('prepare');
@@ -322,6 +379,8 @@ const ExerciseExecutionScreen: React.FC = () => {
         currentRep: 1,
         instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
         holdSoundPlayed: false,
+        currentScheme: 1,
+        schemeOneCompleted: false,
       });
     }
   };
@@ -383,8 +442,8 @@ const ExerciseExecutionScreen: React.FC = () => {
 
         {/* Нижний контент */}
         <View style={styles.bottomContent}>
-          {/* КНОПКА СТАРТ (показывается до начала упражнения) */}
-          {timer.phase === 'prepare' && !timer.isRunning && (
+          {/* КНОПКА СТАРТ (показывается до начала упражнения и между схемами bird_dog) */}
+          {((timer.phase === 'prepare' && !timer.isRunning) || timer.phase === 'schemeCompleted') && (
             <View style={styles.timerContainer}>
               <TouchableOpacity style={styles.startButton} onPress={startExercise}>
                 <Text style={styles.startButtonText}>СТАРТ</Text>
@@ -407,28 +466,96 @@ const ExerciseExecutionScreen: React.FC = () => {
 
           {/* Прогресс подходов */}
           {exerciseType !== 'walk' && (
-            <View style={styles.setsProgress}>
-              {Array.from({ length: settings.exerciseSettings.repsSchema.length }, (_, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.setCircle,
-                    {
-                      backgroundColor: 
-                        index < timer.currentSet - 1 || timer.phase === 'completed'
-                          ? COLORS.PRIMARY_ACCENT
-                          : index === timer.currentSet - 1
-                          ? COLORS.PRIMARY_ACCENT
-                          : COLORS.WHITE,
-                      borderColor: COLORS.PRIMARY_ACCENT,
-                    },
-                  ]}
-                >
-                  {index < timer.currentSet - 1 && (
-                    <Text style={styles.checkmark}>✓</Text>
-                  )}
+            <View>
+              {/* Для bird_dog - отображаем два ряда */}
+              {exerciseType === 'bird_dog' ? (
+                <View>
+                  {/* Первая схема: левая рука + правая нога */}
+                  <View style={styles.schemeContainer}>
+                    <Text style={styles.schemeLabel}>Левая рука + правая нога</Text>
+                    <View style={styles.setsProgress}>
+                      {Array.from({ length: settings.exerciseSettings.repsSchema.length }, (_, index) => (
+                        <View
+                          key={`scheme1-${index}`}
+                          style={[
+                            styles.setCircle,
+                            {
+                              backgroundColor: 
+                                (timer.currentScheme === 1 && index < timer.currentSet - 1) || 
+                                (timer.schemeOneCompleted)
+                                  ? COLORS.PRIMARY_ACCENT
+                                  : (timer.currentScheme === 1 && index === timer.currentSet - 1)
+                                  ? COLORS.PRIMARY_ACCENT
+                                  : COLORS.WHITE,
+                              borderColor: COLORS.PRIMARY_ACCENT,
+                            },
+                          ]}
+                        >
+                          {((timer.currentScheme === 1 && index < timer.currentSet - 1) || 
+                            (timer.schemeOneCompleted)) && (
+                            <Text style={styles.checkmark}>✓</Text>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Вторая схема: правая рука + левая нога */}
+                  <View style={styles.schemeContainer}>
+                    <Text style={styles.schemeLabel}>Правая рука + левая нога</Text>
+                    <View style={styles.setsProgress}>
+                      {Array.from({ length: settings.exerciseSettings.repsSchema.length }, (_, index) => (
+                        <View
+                          key={`scheme2-${index}`}
+                          style={[
+                            styles.setCircle,
+                            {
+                              backgroundColor: 
+                                (timer.currentScheme === 2 && index < timer.currentSet - 1) || 
+                                (timer.phase === 'completed')
+                                  ? COLORS.PRIMARY_ACCENT
+                                  : (timer.currentScheme === 2 && index === timer.currentSet - 1)
+                                  ? COLORS.PRIMARY_ACCENT
+                                  : COLORS.WHITE,
+                              borderColor: COLORS.PRIMARY_ACCENT,
+                            },
+                          ]}
+                        >
+                          {((timer.currentScheme === 2 && index < timer.currentSet - 1) || 
+                            (timer.phase === 'completed')) && (
+                            <Text style={styles.checkmark}>✓</Text>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  </View>
                 </View>
-              ))}
+              ) : (
+                /* Для остальных упражнений - обычный ряд */
+                <View style={styles.setsProgress}>
+                  {Array.from({ length: settings.exerciseSettings.repsSchema.length }, (_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.setCircle,
+                        {
+                          backgroundColor: 
+                            index < timer.currentSet - 1 || timer.phase === 'completed'
+                              ? COLORS.PRIMARY_ACCENT
+                              : index === timer.currentSet - 1
+                              ? COLORS.PRIMARY_ACCENT
+                              : COLORS.WHITE,
+                          borderColor: COLORS.PRIMARY_ACCENT,
+                        },
+                      ]}
+                    >
+                      {index < timer.currentSet - 1 && (
+                        <Text style={styles.checkmark}>✓</Text>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
           )}
 
@@ -672,6 +799,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginBottom: 20,
+  },
+  schemeContainer: {
+    marginBottom: 15,
+  },
+  schemeLabel: {
+    fontSize: 12,
+    color: COLORS.WHITE,
+    textAlign: 'center',
+    marginBottom: 8,
+    fontWeight: '500',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   setCircle: {
     width: 35,
