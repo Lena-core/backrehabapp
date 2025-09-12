@@ -27,10 +27,11 @@ type ExerciseExecutionRouteProp = RouteProp<RootStackParamList, 'ExerciseExecuti
 interface TimerState {
   currentTime: number;
   isRunning: boolean;
-  phase: 'prepare' | 'exercise' | 'rest' | 'completed';
+  phase: 'prepare' | 'exercise' | 'miniRest' | 'rest' | 'completed';
   currentSet: number;
   currentRep: number;
   instruction: string;
+  holdSoundPlayed: boolean;
 }
 
 // Пути к анимационным файлам
@@ -44,13 +45,50 @@ const EXERCISE_ANIMATIONS: Record<ExerciseType, any> = {
 // По умолчанию для ошибок загрузки
 const DEFAULT_PLACEHOLDER = require('../assets/animations/curl_up.gif');
 
+// Надписи для каждого упражнения (для walk - старые надписи)
+const EXERCISE_INSTRUCTIONS: Record<ExerciseType, Record<string, string>> = {
+  curl_up: {
+    prepare: 'Приготовьтесь',
+    start: 'Поднимите голову и плечи',
+    hold: 'Удерживайте положение',
+    miniRest: 'Опустите голову и плечи',
+    rest: 'Отдых',
+    completed: 'Упражнение завершено!'
+  },
+  side_plank: {
+    prepare: 'Приготовьтесь',
+    start: 'Поднимите таз вверх',
+    hold: 'Удерживайте положение',
+    miniRest: 'Опустите таз',
+    rest: 'Отдых',
+    completed: 'Упражнение завершено!'
+  },
+  bird_dog: {
+    prepare: 'Приготовьтесь',
+    start: 'Поднимите руку и ногу',
+    hold: 'Удерживайте положение',
+    miniRest: 'Опустите руку и ногу',
+    rest: 'Отдых',
+    completed: 'Упражнение завершено!'
+  },
+  // Для walk - старые надписи остаются
+  walk: {
+    prepare: 'Приготовьтесь к выполнению упражнения',
+    start: 'Начните ходьбу. Держите спину ровно.',
+    hold: 'Продолжайте ходьбу. Держите спину ровно.',
+    miniRest: '',
+    rest: '',
+    completed: 'Упражнение завершено!'
+  }
+};
+
 const ExerciseExecutionScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<ExerciseExecutionRouteProp>();
   const { exerciseType, exerciseName } = route.params;
 
   // Хук для управления звуками
-  const { playSound, isSoundEnabled, toggleSoundEnabled } = useSounds();
+  const { playSound, isSoundEnabled, toggleSoundEnabled } = useSounds(exerciseType);
 
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
@@ -60,7 +98,8 @@ const ExerciseExecutionScreen: React.FC = () => {
     phase: 'prepare',
     currentSet: 1,
     currentRep: 1,
-    instruction: 'Приготовьтесь к выполнению упражнения',
+    instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
+    holdSoundPlayed: false,
   });
 
   // Загрузка настроек
@@ -81,20 +120,26 @@ const ExerciseExecutionScreen: React.FC = () => {
     return () => clearInterval(interval);
   }, [timer.isRunning, timer.currentTime]);
 
-  // Звуковые сигналы во время таймера
+  // Логика воспроизведения hold.mp3 (только для упражнений, не для ходьбы)
   useEffect(() => {
-    if (!timer.isRunning || timer.currentTime <= 0) return;
+    if (!timer.isRunning || exerciseType === 'walk') return; // Исключаем ходьбу
 
-    // Предупреждающий звук за 3 секунды до конца
-    if (timer.currentTime === 3 && (timer.phase === 'exercise' || timer.phase === 'rest')) {
-      playSound('warning', 0.7);
+    const holdTime = settings?.exerciseSettings.holdTime || 7;
+    
+    // Воспроизведение hold.mp3 при определенных условиях
+    if (timer.phase === 'exercise' && 
+        holdTime > 10 && 
+        timer.currentTime === holdTime - 5 && 
+        !timer.holdSoundPlayed) {
+      
+      playSound('hold');
+      setTimer(prev => ({
+        ...prev,
+        holdSoundPlayed: true,
+        instruction: EXERCISE_INSTRUCTIONS[exerciseType].hold,
+      }));
     }
-
-    // Звук каждой секунды для последних 3 секунд (опционально)
-    if (timer.currentTime <= 3 && timer.currentTime > 0 && timer.phase === 'prepare') {
-      playSound('tick', 0.8);
-    }
-  }, [timer.currentTime, timer.isRunning, timer.phase, playSound]);
+  }, [timer.currentTime, timer.isRunning, timer.phase, timer.holdSoundPlayed, exerciseType, settings, playSound]);
 
   const loadSettings = async () => {
     try {
@@ -122,27 +167,67 @@ const ExerciseExecutionScreen: React.FC = () => {
   };
 
   const handleTimerComplete = async () => {
-    if (timer.phase === 'prepare') {
-      playSound('start'); // Звук начала упражнения
+    // Для ходьбы - простая логика (старая)
+    if (exerciseType === 'walk') {
+      playSound('completed'); // Проигрываем complete.mp3
       setTimer(prev => ({
         ...prev,
-        currentTime: settings?.exerciseSettings.holdTime || 7,
-        phase: 'exercise',
-        instruction: 'Выполняйте упражнение',
+        isRunning: false,
+        phase: 'completed',
+        currentTime: 0,
+        instruction: 'Упражнение завершено!',
       }));
-    } else if (timer.phase === 'exercise') {
-      const repsSchema = settings?.exerciseSettings.repsSchema || [3, 2, 1];
+
+      // Сохранение прогресса для ходьбы
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+        
+        if (savedExercises) {
+          const exercises = JSON.parse(savedExercises);
+          const updatedExercises = exercises.map((ex: any) =>
+            ex.id === exerciseType ? { ...ex, completed: true } : ex
+          );
+          await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
+        }
+      } catch (error) {
+        console.error('Error saving progress:', error);
+      }
+
+      setTimeout(() => navigation.goBack(), 2000);
+      return;
+    }
+
+    // Для остальных упражнений - новая логика
+    const repsSchema = settings?.exerciseSettings.repsSchema || [3, 2, 1];
+    const holdTime = settings?.exerciseSettings.holdTime || 7;
+    const restTime = settings?.exerciseSettings.restTime || 15;
+
+    if (timer.phase === 'prepare') {
+      // Переход от подготовки к упражнению
+      playSound('start');
+      setTimer(prev => ({
+        ...prev,
+        currentTime: holdTime,
+        phase: 'exercise',
+        instruction: EXERCISE_INSTRUCTIONS[exerciseType].start,
+        holdSoundPlayed: false, // Сброс флага
+      }));
+    } 
+    else if (timer.phase === 'exercise') {
+      // Упражнение завершено
       const isLastRep = timer.currentRep >= repsSchema[timer.currentSet - 1];
       const isLastSet = timer.currentSet >= repsSchema.length;
 
       if (isLastRep && isLastSet) {
-        // Упражнение завершено
-        playSound('complete'); // Звук завершения
+        // Все упражнения завершены
+        playSound('completed');
         setTimer(prev => ({
           ...prev,
           isRunning: false,
           phase: 'completed',
-          instruction: 'Упражнение завершено!',
+          currentTime: 0,
+          instruction: EXERCISE_INSTRUCTIONS[exerciseType].completed,
         }));
 
         // Сохранение прогресса
@@ -162,33 +247,50 @@ const ExerciseExecutionScreen: React.FC = () => {
         }
 
         setTimeout(() => navigation.goBack(), 2000);
-      } else if (isLastRep) {
-        // Переход к следующему подходу
-        playSound('rest'); // Звук перехода к отдыху
+      } 
+      else if (isLastRep) {
+        // Последнее повторение в подходе, переход к отдыху между подходами
+        playSound('rest');
         setTimer(prev => ({
           ...prev,
-          currentTime: settings?.exerciseSettings.restTime || 15,
+          currentTime: restTime,
           phase: 'rest',
-          currentSet: prev.currentSet + 1,
-          currentRep: 1,
-          instruction: 'Отдых между подходами',
+          instruction: EXERCISE_INSTRUCTIONS[exerciseType].rest,
         }));
-      } else {
-        // Следующее повторение
+      } 
+      else {
+        // Не последнее повторение, переход к мини-отдыху
+        playSound('finish');
         setTimer(prev => ({
           ...prev,
-          currentTime: settings?.exerciseSettings.holdTime || 7,
-          currentRep: prev.currentRep + 1,
-          instruction: 'Продолжайте упражнение',
+          currentTime: 3, // Мини-отдых всегда 3 секунды
+          phase: 'miniRest',
+          instruction: EXERCISE_INSTRUCTIONS[exerciseType].miniRest,
         }));
       }
-    } else if (timer.phase === 'rest') {
-      playSound('nextSet'); // Звук перехода к следующему подходу
+    } 
+    else if (timer.phase === 'miniRest') {
+      // Мини-отдых завершен, переход к следующему повторению
+      playSound('start');
       setTimer(prev => ({
         ...prev,
-        currentTime: settings?.exerciseSettings.holdTime || 7,
+        currentTime: holdTime,
         phase: 'exercise',
-        instruction: 'Выполняйте упражнение',
+        currentRep: prev.currentRep + 1,
+        instruction: EXERCISE_INSTRUCTIONS[exerciseType].start,
+        holdSoundPlayed: false,
+      }));
+    } 
+    else if (timer.phase === 'rest') {
+      // Отдых между подходами завершен, переход к подготовке следующего подхода
+      playSound('prepare');
+      setTimer(prev => ({
+        ...prev,
+        currentTime: 5, // Подготовка всегда 5 секунд
+        phase: 'prepare',
+        currentSet: prev.currentSet + 1,
+        currentRep: 1,
+        instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
       }));
     }
   };
@@ -197,24 +299,29 @@ const ExerciseExecutionScreen: React.FC = () => {
     if (!settings) return;
 
     if (exerciseType === 'walk') {
+      // Для ходьбы оставляем старую простую логику
       const walkDurationInSeconds = settings.walkSettings.duration * 60;
+      playSound('start'); // Проигрываем walk_start.mp3
       setTimer({
         currentTime: walkDurationInSeconds,
         isRunning: true,
-        phase: 'exercise',
+        phase: 'exercise', // Сразу в фазу упражнения
         currentSet: 1,
         currentRep: 1,
         instruction: 'Начните ходьбу. Держите спину ровно.',
+        holdSoundPlayed: false,
       });
     } else {
-      playSound('prepare'); // Звук начала подготовки
+      // Для остальных упражнений - новая логика с подготовкой
+      playSound('prepare');
       setTimer({
-        currentTime: 3,
+        currentTime: 5, // Подготовка всегда 5 секунд
         isRunning: true,
         phase: 'prepare',
         currentSet: 1,
         currentRep: 1,
-        instruction: 'Приготовьтесь к выполнению упражнения',
+        instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
+        holdSoundPlayed: false,
       });
     }
   };
