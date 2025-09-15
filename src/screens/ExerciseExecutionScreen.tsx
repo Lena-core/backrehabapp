@@ -11,6 +11,8 @@ import {
   Modal,
   Dimensions,
 } from 'react-native';
+import Video from 'react-native-video';
+// @ts-ignore - игнорируем типы для react-native-video
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -38,14 +40,14 @@ interface TimerState {
 
 // Пути к анимационным файлам
 const EXERCISE_ANIMATIONS: Record<ExerciseType, any> = {
-  curl_up: require('../assets/animations/curl_up.gif'),
-  side_plank: require('../assets/animations/side_plank.gif'),
-  bird_dog: require('../assets/animations/bird_dog.gif'), 
-  walk: require('../assets/animations/walk.gif'),
+  curl_up: require('../assets/videos/curl_up.mp4'),
+  side_plank: require('../assets/videos/side_plank.mp4'),
+  bird_dog: require('../assets/videos/bird_dog.mp4'), 
+  walk: require('../assets/videos/walk.mp4'),
 };
 
 // По умолчанию для ошибок загрузки
-const DEFAULT_PLACEHOLDER = require('../assets/animations/curl_up.gif');
+const DEFAULT_PLACEHOLDER = require('../assets/videos/curl_up.mp4');
 
 // Надписи для каждого упражнения (для walk - старые надписи)
 const EXERCISE_INSTRUCTIONS: Record<ExerciseType, Record<string, string>> = {
@@ -539,12 +541,20 @@ const ExerciseExecutionScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Фоновая гифка на весь экран */}
+      {/* Фоновое видео на весь экран */}
       <View style={styles.gifContainer}>
-        <Image
+        <Video
           source={EXERCISE_ANIMATIONS[exerciseType] || DEFAULT_PLACEHOLDER}
           style={styles.backgroundGif}
           resizeMode="contain"
+          repeat={true}
+          muted={true}
+          paused={false}
+          poster=""
+          ignoreSilentSwitch="ignore"
+          playWhenInactive={true}
+          playInBackground={false}
+          onError={(error) => console.log('Video error:', error)}
         />
       </View>
       
