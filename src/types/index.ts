@@ -62,6 +62,19 @@ export interface WalkSession {
   isActive: boolean;
 }
 
+// НОВЫЕ ТИПЫ для промежуточного состояния упражнений
+export interface ExerciseProgress {
+  exerciseType: ExerciseType;
+  currentSet: number;           // Текущий подход (1-based)
+  currentRep: number;          // Текущее повторение в подходе (1-based)
+  completedSets: number;       // Количество завершенных подходов
+  currentScheme?: 1 | 2;       // Для bird_dog: какая схема выполняется
+  schemeOneCompleted?: boolean; // Для bird_dog: завершена ли первая схема
+  timestamp: number;           // Время сохранения состояния
+}
+
+export type ExerciseButtonState = 'start' | 'continue' | 'completed';
+
 // Навигационные типы
 export type RootStackParamList = {
   PainTracker: undefined;

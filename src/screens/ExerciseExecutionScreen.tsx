@@ -15,7 +15,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 
-import { ExerciseType, ExerciseSession, UserSettings, RootStackParamList } from '../types';
+import { ExerciseType, ExerciseSession, UserSettings, RootStackParamList, ExerciseProgress, ExerciseButtonState } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
 import { EXERCISE_DESCRIPTIONS } from '../constants/exercises/descriptions';
 import { useSounds } from '../hooks';
@@ -99,6 +99,8 @@ const ExerciseExecutionScreen: React.FC = () => {
 
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
+  const [exerciseProgress, setExerciseProgress] = useState<ExerciseProgress | null>(null);
+  const [buttonState, setButtonState] = useState<ExerciseButtonState>('start');
   const [timer, setTimer] = useState<TimerState>({
     currentTime: 0,
     isRunning: false,
@@ -111,9 +113,10 @@ const ExerciseExecutionScreen: React.FC = () => {
     schemeOneCompleted: false,
   });
 
-  // Загрузка настроек
+  // Загрузка настроек и прогресса
   useEffect(() => {
     loadSettings();
+    loadExerciseProgress();
   }, []);
 
   // Логика таймера
@@ -175,6 +178,99 @@ const ExerciseExecutionScreen: React.FC = () => {
     }
   };
 
+  // Функции для сохранения промежуточного состояния упражнений
+  const saveExerciseProgress = async (progress: Partial<ExerciseProgress>) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const key = `exercise_progress_${exerciseType}_${today}`;
+      
+      const fullProgress: ExerciseProgress = {
+        exerciseType,
+        completedSets: progress.completedSets || 0,
+        currentSet: progress.currentSet || 1,
+        currentRep: progress.currentRep || 1,
+        timestamp: Date.now(),
+        ...(exerciseType === 'bird_dog' && {
+          currentScheme: progress.currentScheme || 1,
+          schemeOneCompleted: progress.schemeOneCompleted || false
+        })
+      };
+      
+      await AsyncStorage.setItem(key, JSON.stringify(fullProgress));
+      setExerciseProgress(fullProgress);
+      console.log(`Промежуточное состояние ${exerciseType} сохранено:`, fullProgress);
+    } catch (error) {
+      console.error('Error saving exercise progress:', error);
+    }
+  };
+
+  const loadExerciseProgress = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Проверяем, завершено ли упражнение полностью
+      const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+      if (savedExercises) {
+        const exercises = JSON.parse(savedExercises);
+        const currentExercise = exercises.find((ex: any) => ex.id === exerciseType);
+        if (currentExercise?.completed) {
+          setButtonState('completed');
+          setTimer(prev => ({
+            ...prev,
+            phase: 'completed',
+            instruction: EXERCISE_INSTRUCTIONS[exerciseType].completed,
+          }));
+          return;
+        }
+      }
+      
+      // Проверяем промежуточное состояние
+      const key = `exercise_progress_${exerciseType}_${today}`;
+      const savedProgress = await AsyncStorage.getItem(key);
+      
+      if (savedProgress) {
+        const progress: ExerciseProgress = JSON.parse(savedProgress);
+        // Проверяем, что состояние сохранено сегодня (макс 24 часа)
+        const hoursDiff = (Date.now() - progress.timestamp) / (1000 * 60 * 60);
+        
+        if (hoursDiff < 24) {
+          setExerciseProgress(progress);
+          setButtonState('continue');
+          
+          // Особая логика для bird_dog
+          if (exerciseType === 'bird_dog' && progress.schemeOneCompleted) {
+            setTimer(prev => ({
+              ...prev,
+              phase: 'schemeCompleted',
+              schemeOneCompleted: true,
+              currentScheme: 2,
+              instruction: EXERCISE_INSTRUCTIONS[exerciseType].schemeCompleted,
+            }));
+          }
+          
+          console.log(`Промежуточное состояние ${exerciseType} восстановлено:`, progress);
+        } else {
+          // Удаляем устаревшее состояние
+          await AsyncStorage.removeItem(key);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading exercise progress:', error);
+    }
+  };
+
+  const clearExerciseProgress = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const key = `exercise_progress_${exerciseType}_${today}`;
+      await AsyncStorage.removeItem(key);
+      setExerciseProgress(null);
+      console.log(`Промежуточное состояние ${exerciseType} очищено`);
+    } catch (error) {
+      console.error('Error clearing exercise progress:', error);
+    }
+  };
+
   const handleTimerComplete = async () => {
     // Для ходьбы - простая логика (старая)
     if (exerciseType === 'walk') {
@@ -203,6 +299,9 @@ const ExerciseExecutionScreen: React.FC = () => {
         console.error('Error saving progress:', error);
       }
 
+      // Очищаем промежуточное состояние для ходьбы
+      await clearExerciseProgress();
+      setButtonState('completed');
       setTimeout(() => navigation.goBack(), 2000);
       return;
     }
@@ -247,6 +346,15 @@ const ExerciseExecutionScreen: React.FC = () => {
             instruction: EXERCISE_INSTRUCTIONS[exerciseType].schemeCompleted,
             schemeOneCompleted: true,
           }));
+          
+          // Сохраняем промежуточное состояние bird_dog
+          await saveExerciseProgress({
+            completedSets: repsSchema.length, // Все подходы первой схемы завершены
+            currentSet: 1,
+            currentRep: 1,
+            currentScheme: 1,
+            schemeOneCompleted: true
+          });
         } else {
           // Все упражнения завершены
           playSound('completed');
@@ -274,6 +382,9 @@ const ExerciseExecutionScreen: React.FC = () => {
             console.error('Error saving progress:', error);
           }
 
+          // Очищаем промежуточное состояние при полном завершении
+          await clearExerciseProgress();
+          setButtonState('completed');
           setTimeout(() => navigation.goBack(), 2000);
         }
       } 
@@ -286,6 +397,17 @@ const ExerciseExecutionScreen: React.FC = () => {
           phase: 'rest',
           instruction: EXERCISE_INSTRUCTIONS[exerciseType].rest,
         }));
+        
+        // Сохраняем прогресс после завершения подхода
+        await saveExerciseProgress({
+          completedSets: timer.currentSet, // Количество завершенных подходов
+          currentSet: timer.currentSet + 1, // Следующий подход
+          currentRep: 1,
+          ...(exerciseType === 'bird_dog' && {
+            currentScheme: timer.currentScheme,
+            schemeOneCompleted: timer.schemeOneCompleted
+          })
+        });
       } 
       else {
         // Не последнее повторение, переход к мини-отдыху
@@ -368,8 +490,22 @@ const ExerciseExecutionScreen: React.FC = () => {
         instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
         holdSoundPlayed: false,
       }));
+    } else if (buttonState === 'continue' && exerciseProgress) {
+      // Продолжаем с сохраненного места
+      playSound('prepare');
+      setTimer({
+        currentTime: 5,
+        isRunning: true,
+        phase: 'prepare',
+        currentSet: exerciseProgress.currentSet,
+        currentRep: exerciseProgress.currentRep,
+        instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
+        holdSoundPlayed: false,
+        currentScheme: exerciseProgress.currentScheme || 1,
+        schemeOneCompleted: exerciseProgress.schemeOneCompleted || false,
+      });
     } else {
-      // Для остальных упражнений - новая логика с подготовкой
+      // Для остальных случаев - новое упражнение
       playSound('prepare');
       setTimer({
         currentTime: 5, // Подготовка всегда 5 секунд
@@ -442,12 +578,23 @@ const ExerciseExecutionScreen: React.FC = () => {
 
         {/* Нижний контент */}
         <View style={styles.bottomContent}>
-          {/* КНОПКА СТАРТ (показывается до начала упражнения и между схемами bird_dog) */}
-          {((timer.phase === 'prepare' && !timer.isRunning) || timer.phase === 'schemeCompleted') && (
+          {/* КНОПКА СТАРТ/ПРОДОЛЖИТЬ/ВЫПОЛНЕНО */}
+          {((timer.phase === 'prepare' && !timer.isRunning) || timer.phase === 'schemeCompleted') && buttonState !== 'completed' && (
             <View style={styles.timerContainer}>
               <TouchableOpacity style={styles.startButton} onPress={startExercise}>
-                <Text style={styles.startButtonText}>СТАРТ</Text>
+                <Text style={styles.startButtonText}>
+                  {buttonState === 'continue' ? 'ПРОДОЛЖИТЬ' : 'СТАРТ'}
+                </Text>
               </TouchableOpacity>
+            </View>
+          )}
+          
+          {/* НАДПИСЬ ВЫПОЛНЕНО */}
+          {buttonState === 'completed' && (
+            <View style={styles.timerContainer}>
+              <Text style={[styles.startButtonText, { fontSize: 24, color: COLORS.PRIMARY_ACCENT }]}>
+                ВЫПОЛНЕНО
+              </Text>
             </View>
           )}
 
@@ -481,18 +628,22 @@ const ExerciseExecutionScreen: React.FC = () => {
                             styles.setCircle,
                             {
                               backgroundColor: 
-                                (timer.currentScheme === 1 && index < timer.currentSet - 1) || 
-                                (timer.schemeOneCompleted)
+                                (timer.schemeOneCompleted) ||
+                                (exerciseProgress?.schemeOneCompleted) ||
+                                (timer.currentScheme === 1 && index < timer.currentSet - 1) ||
+                                (timer.currentScheme === 1 && index < (exerciseProgress?.completedSets || 0))
                                   ? COLORS.PRIMARY_ACCENT
-                                  : (timer.currentScheme === 1 && index === timer.currentSet - 1)
+                                  : (timer.currentScheme === 1 && index === timer.currentSet - 1 && timer.isRunning)
                                   ? COLORS.PRIMARY_ACCENT
                                   : COLORS.WHITE,
                               borderColor: COLORS.PRIMARY_ACCENT,
                             },
                           ]}
                         >
-                          {((timer.currentScheme === 1 && index < timer.currentSet - 1) || 
-                            (timer.schemeOneCompleted)) && (
+                          {((timer.schemeOneCompleted) ||
+                            (exerciseProgress?.schemeOneCompleted) ||
+                            (timer.currentScheme === 1 && index < timer.currentSet - 1) ||
+                            (timer.currentScheme === 1 && index < (exerciseProgress?.completedSets || 0))) && (
                             <Text style={styles.checkmark}>✓</Text>
                           )}
                         </View>
@@ -511,18 +662,20 @@ const ExerciseExecutionScreen: React.FC = () => {
                             styles.setCircle,
                             {
                               backgroundColor: 
-                                (timer.currentScheme === 2 && index < timer.currentSet - 1) || 
-                                (timer.phase === 'completed')
+                                (timer.phase === 'completed') ||
+                                (timer.currentScheme === 2 && index < timer.currentSet - 1) ||
+                                (timer.currentScheme === 2 && index < (exerciseProgress?.completedSets || 0))
                                   ? COLORS.PRIMARY_ACCENT
-                                  : (timer.currentScheme === 2 && index === timer.currentSet - 1)
+                                  : (timer.currentScheme === 2 && index === timer.currentSet - 1 && timer.isRunning)
                                   ? COLORS.PRIMARY_ACCENT
                                   : COLORS.WHITE,
                               borderColor: COLORS.PRIMARY_ACCENT,
                             },
                           ]}
                         >
-                          {((timer.currentScheme === 2 && index < timer.currentSet - 1) || 
-                            (timer.phase === 'completed')) && (
+                          {((timer.phase === 'completed') ||
+                            (timer.currentScheme === 2 && index < timer.currentSet - 1) ||
+                            (timer.currentScheme === 2 && index < (exerciseProgress?.completedSets || 0))) && (
                             <Text style={styles.checkmark}>✓</Text>
                           )}
                         </View>
@@ -540,16 +693,20 @@ const ExerciseExecutionScreen: React.FC = () => {
                         styles.setCircle,
                         {
                           backgroundColor: 
-                            index < timer.currentSet - 1 || timer.phase === 'completed'
+                            (index < (exerciseProgress?.completedSets || 0)) || 
+                            (index < timer.currentSet - 1) || 
+                            timer.phase === 'completed'
                               ? COLORS.PRIMARY_ACCENT
-                              : index === timer.currentSet - 1
+                              : (index === timer.currentSet - 1 && timer.isRunning)
                               ? COLORS.PRIMARY_ACCENT
                               : COLORS.WHITE,
                           borderColor: COLORS.PRIMARY_ACCENT,
                         },
                       ]}
                     >
-                      {index < timer.currentSet - 1 && (
+                      {((index < (exerciseProgress?.completedSets || 0)) || 
+                        (index < timer.currentSet - 1) || 
+                        timer.phase === 'completed') && (
                         <Text style={styles.checkmark}>✓</Text>
                       )}
                     </View>
