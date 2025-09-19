@@ -178,8 +178,6 @@ const SettingsScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Настройки упражнений "Большой тройки" */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Настройки Упражнений</Text>
-
           <Slider
             label="Время удержания"
             value={localSettings.exerciseSettings.holdTime}
@@ -284,8 +282,6 @@ const SettingsScreen: React.FC = () => {
 
         {/* Настройки ходьбы */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Настройки Ходьбы</Text>
-
           <Slider
             label="Длительность сессии"
             value={localSettings.walkSettings.duration}
@@ -347,18 +343,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: 20,
     paddingBottom: 40,
   },
   section: {
     marginBottom: 40,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-    textAlign: 'center',
-    marginBottom: 30,
   },
   sliderContainer: {
     backgroundColor: COLORS.WHITE,

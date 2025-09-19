@@ -4,11 +4,11 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StyleSheet } from 'react-native';
 
-// Импорт экранов (будут созданы далее)
+// Импорт экранов
 import PainTrackerScreen from './screens/PainTrackerScreen';
 import DayPlanScreen from './screens/DayPlanScreen';
 import ExerciseExecutionScreen from './screens/ExerciseExecutionScreen';
-import SettingsScreen from './screens/SettingsScreen';
+import SettingsStackNavigator from './navigation/SettingsStackNavigator';
 
 // Импорт типов
 import { RootStackParamList, TabParamList } from './types';
@@ -53,7 +53,7 @@ function TabNavigator() {
       />
       <Tab.Screen 
         name="Settings" 
-        component={SettingsScreen}
+        component={SettingsStackNavigator}
         options={{
           title: 'Настройки',
         }}

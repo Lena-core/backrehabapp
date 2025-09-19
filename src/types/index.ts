@@ -19,9 +19,16 @@ export interface WalkSettings {
   sessions: number;      // 1-5 сессий
 }
 
+export interface NotificationSettings {
+  exerciseReminders: boolean;    // Напоминания об упражнениях
+  spineHygieneTips: boolean;     // Подсказки о гигиене позвоночника
+  educationalMessages: boolean;  // Образовательные сообщения
+}
+
 export interface UserSettings {
   exerciseSettings: ExerciseSettings;
   walkSettings: WalkSettings;
+  notificationSettings: NotificationSettings;
 }
 
 export type ExerciseType = 'curl_up' | 'side_plank' | 'bird_dog' | 'walk';
@@ -83,11 +90,21 @@ export type RootStackParamList = {
     exerciseType: ExerciseType;
     exerciseName: string;
   };
-  Settings: undefined;
+  Main: undefined;
 };
 
 export type TabParamList = {
   Home: undefined;
   Profile: undefined;
   Settings: undefined;
+};
+
+// Навигация внутри Settings
+export type SettingsStackParamList = {
+  SettingsMain: undefined;
+  ExerciseSettings: undefined;
+  Notifications: undefined;
+  Feedback: undefined;
+  PrivacyPolicy: undefined;
+  UserAgreement: undefined;
 };

@@ -39,6 +39,11 @@ export const useUserSettings = (): UseUserSettingsReturn => {
       duration: 5,
       sessions: 3,
     },
+    notificationSettings: {
+      exerciseReminders: true,
+      spineHygieneTips: true,
+      educationalMessages: true,
+    },
   });
 
   const loadSettings = async (): Promise<void> => {
@@ -52,6 +57,24 @@ export const useUserSettings = (): UseUserSettingsReturn => {
       if (savedSettings) {
         const parsed = JSON.parse(savedSettings);
         console.log('Loaded settings:', parsed);
+        
+        // Обратная совместимость: добавляем настройки уведомлений если их нет
+        if (!parsed.notificationSettings) {
+          parsed.notificationSettings = {
+            exerciseReminders: true,
+            spineHygieneTips: true,
+            educationalMessages: true,
+          };
+          // Сохраняем обновленные настройки
+          await AsyncStorage.setItem('userSettings', JSON.stringify(parsed));
+        }
+        
+        // Удаляем старое поле allNotifications если оно есть
+        if (parsed.notificationSettings?.allNotifications !== undefined) {
+          delete parsed.notificationSettings.allNotifications;
+          await AsyncStorage.setItem('userSettings', JSON.stringify(parsed));
+        }
+        
         setSettings(parsed);
       } else {
         const defaultSettings = getDefaultSettings();
