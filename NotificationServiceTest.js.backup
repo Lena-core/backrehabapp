@@ -1,0 +1,12 @@
+// Простой тест - проверяем, загружается ли файл вообще
+console.log('TEST: Simple NotificationService loaded!');
+
+class NotificationService {
+  constructor() {
+    console.log('TEST: NotificationService constructor called!');
+  }
+}
+
+console.log('TEST: About to export...');
+export default new NotificationService();
+console.log('TEST: Exported successfully!');

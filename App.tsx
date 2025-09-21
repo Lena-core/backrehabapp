@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -14,6 +14,11 @@ import SettingsStackNavigator from './src/navigation/SettingsStackNavigator';
 // Импорт типов
 import { RootStackParamList, TabParamList } from './src/types';
 import { COLORS } from './src/constants/colors';
+import messaging from '@react-native-firebase/messaging';
+import { Alert } from 'react-native';
+
+// Импорт сервиса уведомлений (пока отключен)
+// import NotificationService from './src/NotificationService';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createStackNavigator<RootStackParamList>();
@@ -87,6 +92,62 @@ function TabNavigator() {
 
 // Главная навигация приложения
 function App(): JSX.Element {
+  // Firebase push уведомления
+  useEffect(() => {
+    console.log('App.tsx: Component mounted!');
+    console.log('App.tsx: Setting up Firebase notifications...');
+    
+    const setupNotifications = async () => {
+      try {
+        // Запрашиваем разрешение
+        const authStatus = await messaging().requestPermission();
+        const enabled = authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+                       authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+        
+        if (enabled) {
+          console.log('App.tsx: Permission granted');
+          
+          // Получаем FCM токен
+          const token = await messaging().getToken();
+          if (token) {
+            console.log('App.tsx: FCM Token:', token);
+            
+            // Foreground уведомления
+            messaging().onMessage(async remoteMessage => {
+              console.log('App.tsx: Notification in foreground:', remoteMessage);
+              if (remoteMessage.notification) {
+                Alert.alert(
+                  remoteMessage.notification.title || 'Уведомление',
+                  remoteMessage.notification.body || '',
+                  [{ text: 'OK' }]
+                );
+              }
+            });
+            
+            // Background уведомления
+            messaging().onNotificationOpenedApp(remoteMessage => {
+              console.log('App.tsx: App opened from notification:', remoteMessage);
+            });
+            
+            // Quit state уведомления
+            const initialNotification = await messaging().getInitialNotification();
+            if (initialNotification) {
+              console.log('App.tsx: App opened from quit state:', initialNotification);
+            }
+            
+            console.log('App.tsx: Firebase notifications setup complete!');
+          }
+        } else {
+          console.log('App.tsx: Notification permission denied');
+        }
+      } catch (error) {
+        console.log('App.tsx: Error setting up notifications:', error);
+      }
+    };
+    
+    setupNotifications();
+  }, []);
+
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>

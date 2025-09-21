@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "762497964544",
+    "project_id": "back-rehab",
+    "storage_bucket": "back-rehab.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:762497964544:android:e3a28cdc73bf971d7296e5",
+        "android_client_info": {
+          "package_name": "com.backrehabfinal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBbjbF4WWU2rSG4ZzeZWLy6aPKahL9iGEA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
