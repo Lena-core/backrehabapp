@@ -21,6 +21,7 @@ import { ExerciseType, ExerciseSession, UserSettings, RootStackParamList, Exerci
 import { COLORS, GRADIENTS } from '../constants/colors';
 import { EXERCISE_DESCRIPTIONS } from '../constants/exercises/descriptions';
 import { useSounds } from '../hooks';
+import { useUserSettings } from '../hooks/useUserSettings';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -98,8 +99,9 @@ const ExerciseExecutionScreen: React.FC = () => {
 
   // Хук для управления звуками
   const { playSound, isSoundEnabled, toggleSoundEnabled } = useSounds(exerciseType);
-
-  const [settings, setSettings] = useState<UserSettings | null>(null);
+  
+  // Используем хук для автоматического обновления настроек
+  const { settings } = useUserSettings();
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
   const [exerciseProgress, setExerciseProgress] = useState<ExerciseProgress | null>(null);
   const [buttonState, setButtonState] = useState<ExerciseButtonState>('start');
@@ -115,9 +117,8 @@ const ExerciseExecutionScreen: React.FC = () => {
     schemeOneCompleted: false,
   });
 
-  // Загрузка настроек и прогресса
+  // Загрузка прогресса
   useEffect(() => {
-    loadSettings();
     loadExerciseProgress();
   }, []);
 
@@ -154,31 +155,6 @@ const ExerciseExecutionScreen: React.FC = () => {
       }));
     }
   }, [timer.currentTime, timer.isRunning, timer.phase, timer.holdSoundPlayed, exerciseType, settings, playSound]);
-
-  const loadSettings = async () => {
-    try {
-      const savedSettings = await AsyncStorage.getItem('userSettings');
-      if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
-      } else {
-        const defaultSettings: UserSettings = {
-          exerciseSettings: {
-            holdTime: 7,
-            repsSchema: [3, 2, 1],
-            restTime: 15,
-          },
-          walkSettings: {
-            duration: 5,
-            sessions: 3,
-          },
-        };
-        setSettings(defaultSettings);
-        await AsyncStorage.setItem('userSettings', JSON.stringify(defaultSettings));
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
-    }
-  };
 
   // Функции для сохранения промежуточного состояния упражнений
   const saveExerciseProgress = async (progress: Partial<ExerciseProgress>) => {

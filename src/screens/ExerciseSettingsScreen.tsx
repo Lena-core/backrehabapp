@@ -134,24 +134,14 @@ const SettingsScreen: React.FC = () => {
     }
   }, [settings]);
 
-  const handleSaveSettings = async () => {
+  // Автоматическое сохранение настроек
+  const autoSaveSettings = async (updatedSettings: UserSettings) => {
     try {
-      const updatedSettings = {
-        ...localSettings,
-        exerciseSettings: {
-          ...localSettings.exerciseSettings,
-          repsSchema: selectedSchemaType === 'preset' 
-            ? REPS_SCHEMAS[selectedPresetIndex].value 
-            : customSchema,
-        },
-      };
-      
-      console.log('Saving updated settings:', updatedSettings);
+      console.log('Auto-saving settings:', updatedSettings);
       await saveSettings(updatedSettings);
-      
-      Alert.alert('Успешно', 'Настройки сохранены! План упражнений обновлен.');
+      console.log('Settings auto-saved successfully');
     } catch (error) {
-      console.error('Error saving settings:', error);
+      console.error('Error auto-saving settings:', error);
       Alert.alert('Ошибка', 'Не удалось сохранить настройки');
     }
   };
@@ -161,6 +151,17 @@ const SettingsScreen: React.FC = () => {
     const numValue = parseInt(value, 10) || 0;
     newSchema[index] = Math.min(Math.max(numValue, 0), 30);
     setCustomSchema(newSchema);
+    
+    // Автосохранение при изменении произвольной схемы
+    const updatedSettings = {
+      ...localSettings,
+      exerciseSettings: {
+        ...localSettings.exerciseSettings,
+        repsSchema: newSchema,
+      },
+    };
+    setLocalSettings(updatedSettings);
+    autoSaveSettings(updatedSettings);
   };
 
   if (loading) {
@@ -185,12 +186,14 @@ const SettingsScreen: React.FC = () => {
             max={10}
             suffix=" сек"
             recommendation="Для начала рекомендуется 7 секунд, так как это оптимальное время для тренировки выносливости."
-            onValueChange={(value) =>
-              setLocalSettings({
+            onValueChange={(value) => {
+              const updatedSettings = {
                 ...localSettings,
                 exerciseSettings: { ...localSettings.exerciseSettings, holdTime: value },
-              })
-            }
+              };
+              setLocalSettings(updatedSettings);
+              autoSaveSettings(updatedSettings);
+            }}
           />
 
           {/* Схема повторений */}
@@ -234,7 +237,19 @@ const SettingsScreen: React.FC = () => {
                       styles.presetOption,
                       selectedPresetIndex === index && styles.selectedPresetOption,
                     ]}
-                    onPress={() => setSelectedPresetIndex(index)}
+                    onPress={() => {
+                      setSelectedPresetIndex(index);
+                      // Автосохранение при выборе preset схемы
+                      const updatedSettings = {
+                        ...localSettings,
+                        exerciseSettings: {
+                          ...localSettings.exerciseSettings,
+                          repsSchema: schema.value,
+                        },
+                      };
+                      setLocalSettings(updatedSettings);
+                      autoSaveSettings(updatedSettings);
+                    }}
                   >
                     <Text style={styles.presetLabel}>{schema.label}</Text>
                     <Text style={styles.presetDescription}>{schema.description}</Text>
@@ -271,12 +286,14 @@ const SettingsScreen: React.FC = () => {
             max={30}
             suffix=" сек"
             recommendation="Короткие паузы (10-15 секунд) являются ключом к развитию выносливости."
-            onValueChange={(value) =>
-              setLocalSettings({
+            onValueChange={(value) => {
+              const updatedSettings = {
                 ...localSettings,
                 exerciseSettings: { ...localSettings.exerciseSettings, restTime: value },
-              })
-            }
+              };
+              setLocalSettings(updatedSettings);
+              autoSaveSettings(updatedSettings);
+            }}
           />
         </View>
 
@@ -289,12 +306,14 @@ const SettingsScreen: React.FC = () => {
             max={60}
             suffix=" мин"
             recommendation="Начинайте с 5-10 минут. Постепенно увеличивайте время, но только если ходьба не вызывает боль."
-            onValueChange={(value) =>
-              setLocalSettings({
+            onValueChange={(value) => {
+              const updatedSettings = {
                 ...localSettings,
                 walkSettings: { ...localSettings.walkSettings, duration: value },
-              })
-            }
+              };
+              setLocalSettings(updatedSettings);
+              autoSaveSettings(updatedSettings);
+            }}
           />
 
           <Slider
@@ -303,19 +322,16 @@ const SettingsScreen: React.FC = () => {
             min={1}
             max={5}
             recommendation="Начинать с 3 коротких сессий в день. Несколько коротких прогулок эффективнее, чем одна длительная, для питания межпозвонковых дисков."
-            onValueChange={(value) =>
-              setLocalSettings({
+            onValueChange={(value) => {
+              const updatedSettings = {
                 ...localSettings,
                 walkSettings: { ...localSettings.walkSettings, sessions: value },
-              })
-            }
+              };
+              setLocalSettings(updatedSettings);
+              autoSaveSettings(updatedSettings);
+            }}
           />
         </View>
-
-        {/* Кнопка сохранения */}
-        <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
-          <Text style={styles.saveButtonText}>Сохранить Настройки</Text>
-        </TouchableOpacity>
 
         {/* Медицинское предупреждение */}
         <Text style={styles.disclaimer}>
@@ -510,25 +526,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.TEXT_PRIMARY,
     width: '100%',
-  },
-  saveButton: {
-    backgroundColor: COLORS.CTA_BUTTON,
-    paddingVertical: 16,
-    paddingHorizontal: 40,
-    borderRadius: 25,
-    alignSelf: 'center',
-    marginBottom: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-    textAlign: 'center',
   },
   disclaimer: {
     fontSize: 11,
