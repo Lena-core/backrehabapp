@@ -19,10 +19,33 @@ export interface WalkSettings {
   sessions: number;      // 1-5 сессий
 }
 
+// Типы для системы уведомлений
+export interface NotificationTime {
+  hour: number;    // 0-23
+  minute: number;  // 0-59
+}
+
+export interface NotificationConfig {
+  enabled: boolean;
+  time: NotificationTime;
+}
+
 export interface NotificationSettings {
-  exerciseReminders: boolean;    // Напоминания об упражнениях
-  spineHygieneTips: boolean;     // Подсказки о гигиене позвоночника
-  educationalMessages: boolean;  // Образовательные сообщения
+  exerciseReminders: NotificationConfig;    // Напоминания об упражнениях
+  spineHygieneTips: NotificationConfig;     // Подсказки о гигиене позвоночника
+  educationalMessages: NotificationConfig;  // Образовательные сообщения
+}
+
+// Типы уведомлений
+export type NotificationType = 'exerciseReminders' | 'spineHygieneTips' | 'educationalMessages';
+
+export interface ScheduledNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  scheduledTime: NotificationTime;
+  isActive: boolean;
 }
 
 export interface UserSettings {

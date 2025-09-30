@@ -7,27 +7,133 @@ import {
   Switch,
   Alert,
   TouchableOpacity,
+  Modal,
+  Platform,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { NotificationSettings } from '../types';
+import { NotificationSettings, NotificationConfig, NotificationTime } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
 import { useUserSettings } from '../hooks/useUserSettings';
+import NotificationService from '../NotificationService';
 
+// Компонент выбора времени
+interface TimePickerProps {
+  visible: boolean;
+  time: NotificationTime;
+  onTimeChange: (time: NotificationTime) => void;
+  onClose: () => void;
+  title: string;
+}
+
+const TimePicker: React.FC<TimePickerProps> = ({ visible, time, onTimeChange, onClose, title }) => {
+  const [selectedHour, setSelectedHour] = useState(time.hour);
+  const [selectedMinute, setSelectedMinute] = useState(time.minute);
+
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const minutes = Array.from({ length: 60 }, (_, i) => i); // каждую минуту
+
+  const handleConfirm = () => {
+    onTimeChange({ hour: selectedHour, minute: selectedMinute });
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <View style={styles.modalOverlay}>
+        <View style={styles.timePickerModal}>
+          <Text style={styles.timePickerTitle}>{title}</Text>
+          
+          <View style={styles.timePickerContainer}>
+            <View style={styles.timeColumn}>
+              <Text style={styles.timeColumnTitle}>Час</Text>
+              <ScrollView style={styles.timeScrollView} showsVerticalScrollIndicator={false}>
+                {hours.map(hour => (
+                  <TouchableOpacity
+                    key={hour}
+                    style={[
+                      styles.timeOption,
+                      selectedHour === hour && styles.timeOptionSelected
+                    ]}
+                    onPress={() => setSelectedHour(hour)}
+                  >
+                    <Text style={[
+                      styles.timeOptionText,
+                      selectedHour === hour && styles.timeOptionTextSelected
+                    ]}>
+                      {hour.toString().padStart(2, '0')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            <Text style={styles.timeSeparator}>:</Text>
+
+            <View style={styles.timeColumn}>
+              <Text style={styles.timeColumnTitle}>Минуты</Text>
+              <ScrollView style={styles.timeScrollView} showsVerticalScrollIndicator={false}>
+                {minutes.map(minute => (
+                  <TouchableOpacity
+                    key={minute}
+                    style={[
+                      styles.timeOption,
+                      selectedMinute === minute && styles.timeOptionSelected
+                    ]}
+                    onPress={() => setSelectedMinute(minute)}
+                  >
+                    <Text style={[
+                      styles.timeOptionText,
+                      selectedMinute === minute && styles.timeOptionTextSelected
+                    ]}>
+                      {minute.toString().padStart(2, '0')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+
+          <View style={styles.timePickerButtons}>
+            <TouchableOpacity style={styles.timePickerButton} onPress={onClose}>
+              <Text style={styles.timePickerButtonText}>Отмена</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.timePickerButton, styles.timePickerButtonPrimary]} 
+              onPress={handleConfirm}
+            >
+              <Text style={[styles.timePickerButtonText, styles.timePickerButtonTextPrimary]}>
+                Сохранить
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// Компонент переключателя уведомлений с временем
 interface NotificationToggleProps {
   title: string;
   description: string;
-  value: boolean;
-  onValueChange: (value: boolean) => void;
+  config: NotificationConfig;
+  onToggle: (enabled: boolean) => void;
+  onTimePress: () => void;
   disabled?: boolean;
 }
 
 const NotificationToggle: React.FC<NotificationToggleProps> = ({
   title,
   description,
-  value,
-  onValueChange,
+  config,
+  onToggle,
+  onTimePress,
   disabled = false,
 }) => {
+  const formatTime = (time: NotificationTime) => {
+    return `${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}`;
+  };
+
   return (
     <View style={[styles.toggleContainer, disabled && styles.disabledContainer]}>
       <View style={styles.toggleContent}>
@@ -38,16 +144,29 @@ const NotificationToggle: React.FC<NotificationToggleProps> = ({
           <Text style={[styles.toggleDescription, disabled && styles.disabledText]}>
             {description}
           </Text>
+          
+          {config.enabled && (
+            <TouchableOpacity 
+              style={styles.timeButton} 
+              onPress={onTimePress}
+              disabled={disabled}
+            >
+              <Text style={styles.timeButtonText}>
+                🕐 Время: {formatTime(config.time)}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
+        
         <Switch
-          value={value}
-          onValueChange={onValueChange}
+          value={config.enabled}
+          onValueChange={onToggle}
           disabled={disabled}
           trackColor={{
             false: COLORS.TEXT_INACTIVE,
             true: COLORS.PRIMARY_ACCENT,
           }}
-          thumbColor={value ? COLORS.WHITE : COLORS.WHITE}
+          thumbColor={config.enabled ? COLORS.WHITE : COLORS.WHITE}
         />
       </View>
     </View>
@@ -58,12 +177,13 @@ const NotificationsScreen: React.FC = () => {
   const { settings, loading, saveSettings } = useUserSettings();
   
   const [localNotificationSettings, setLocalNotificationSettings] = useState<NotificationSettings>({
-    exerciseReminders: true,
-    spineHygieneTips: true,
-    educationalMessages: true,
+    exerciseReminders: { enabled: true, time: { hour: 9, minute: 0 } },
+    spineHygieneTips: { enabled: true, time: { hour: 14, minute: 0 } },
+    educationalMessages: { enabled: true, time: { hour: 20, minute: 0 } },
   });
 
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [currentEditingType, setCurrentEditingType] = useState<keyof NotificationSettings | null>(null);
 
   // Загружаем настройки при получении данных
   useEffect(() => {
@@ -72,35 +192,81 @@ const NotificationsScreen: React.FC = () => {
     }
   }, [settings]);
 
-  const handleToggleNotification = (
+  const handleToggleNotification = async (
     key: keyof NotificationSettings,
-    value: boolean
+    enabled: boolean
   ) => {
+    if (!settings) return;
+
     const newSettings = {
       ...localNotificationSettings,
-      [key]: value,
+      [key]: {
+        ...localNotificationSettings[key],
+        enabled: enabled,
+      },
     };
 
     setLocalNotificationSettings(newSettings);
-    setHasUnsavedChanges(true);
-  };
 
-  const handleSaveSettings = async () => {
-    if (!settings) return;
-
+    // Автоматически сохраняем изменения
     try {
       const updatedSettings = {
         ...settings,
-        notificationSettings: localNotificationSettings,
+        notificationSettings: newSettings,
       };
 
       await saveSettings(updatedSettings);
-      setHasUnsavedChanges(false);
-      Alert.alert('Успешно', 'Настройки уведомлений сохранены!');
+      await NotificationService.scheduleNotificationsFromSettings(newSettings);
+      
+      console.log('Notification settings auto-saved');
     } catch (error) {
-      console.error('Error saving notification settings:', error);
+      console.error('Error auto-saving notification settings:', error);
       Alert.alert('Ошибка', 'Не удалось сохранить настройки уведомлений');
     }
+  };
+
+  const handleTimeChange = async (key: keyof NotificationSettings, time: NotificationTime) => {
+    if (!settings) return;
+
+    const newSettings = {
+      ...localNotificationSettings,
+      [key]: {
+        ...localNotificationSettings[key],
+        time: time,
+      },
+    };
+
+    setLocalNotificationSettings(newSettings);
+
+    // Автоматически сохраняем изменения
+    try {
+      const updatedSettings = {
+        ...settings,
+        notificationSettings: newSettings,
+      };
+
+      await saveSettings(updatedSettings);
+      await NotificationService.scheduleNotificationsFromSettings(newSettings);
+      
+      console.log('Notification time auto-saved');
+    } catch (error) {
+      console.error('Error auto-saving notification time:', error);
+      Alert.alert('Ошибка', 'Не удалось сохранить время уведомления');
+    }
+  };
+
+  const openTimePicker = (type: keyof NotificationSettings) => {
+    setCurrentEditingType(type);
+    setTimePickerVisible(true);
+  };
+
+  const getNotificationTitle = (type: keyof NotificationSettings): string => {
+    const titles = {
+      exerciseReminders: 'Выберите время для упражнений',
+      spineHygieneTips: 'Выберите время для советов',
+      educationalMessages: 'Выберите время для сообщений'
+    };
+    return titles[type];
   };
 
   if (loading) {
@@ -123,22 +289,25 @@ const NotificationsScreen: React.FC = () => {
           <NotificationToggle
             title="Напоминания об упражнениях"
             description="Уведомления о необходимости выполнить упражнения"
-            value={localNotificationSettings.exerciseReminders}
-            onValueChange={(value) => handleToggleNotification('exerciseReminders', value)}
+            config={localNotificationSettings.exerciseReminders}
+            onToggle={(enabled) => handleToggleNotification('exerciseReminders', enabled)}
+            onTimePress={() => openTimePicker('exerciseReminders')}
           />
 
           <NotificationToggle
             title="Подсказки о гигиене позвоночника"
             description="Советы по правильной осанке и уходу за спиной"
-            value={localNotificationSettings.spineHygieneTips}
-            onValueChange={(value) => handleToggleNotification('spineHygieneTips', value)}
+            config={localNotificationSettings.spineHygieneTips}
+            onToggle={(enabled) => handleToggleNotification('spineHygieneTips', enabled)}
+            onTimePress={() => openTimePicker('spineHygieneTips')}
           />
 
           <NotificationToggle
             title="Образовательные сообщения"
             description="Полезная информация о здоровье позвоночника"
-            value={localNotificationSettings.educationalMessages}
-            onValueChange={(value) => handleToggleNotification('educationalMessages', value)}
+            config={localNotificationSettings.educationalMessages}
+            onToggle={(enabled) => handleToggleNotification('educationalMessages', enabled)}
+            onTimePress={() => openTimePicker('educationalMessages')}
           />
         </View>
 
@@ -147,17 +316,26 @@ const NotificationsScreen: React.FC = () => {
           <Text style={styles.infoTitle}>ℹ️ Информация</Text>
           <Text style={styles.infoText}>
             Push-уведомления помогают поддерживать регулярность выполнения упражнений и получать полезные советы. 
-            Каждый тип уведомлений можно настроить отдельно.
+            Каждый тип уведомлений можно настроить отдельно и задать удобное время.
+            {'\n\n'}
+            Изменения сохраняются автоматически. Уведомления будут повторяться каждый день в указанное время.
           </Text>
         </View>
-
-        {/* Кнопка сохранения */}
-        {hasUnsavedChanges && (
-          <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
-            <Text style={styles.saveButtonText}>Сохранить изменения</Text>
-          </TouchableOpacity>
-        )}
       </ScrollView>
+
+      {/* Модальное окно выбора времени */}
+      {currentEditingType && (
+        <TimePicker
+          visible={timePickerVisible}
+          time={localNotificationSettings[currentEditingType].time}
+          onTimeChange={(time) => handleTimeChange(currentEditingType, time)}
+          onClose={() => {
+            setTimePickerVisible(false);
+            setCurrentEditingType(null);
+          }}
+          title={getNotificationTitle(currentEditingType)}
+        />
+      )}
     </LinearGradient>
   );
 };
@@ -206,7 +384,7 @@ const styles = StyleSheet.create({
   },
   toggleContent: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   toggleText: {
     flex: 1,
@@ -223,9 +401,22 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     opacity: 0.7,
     lineHeight: 18,
+    marginBottom: 8,
   },
   disabledText: {
     opacity: 0.5,
+  },
+  timeButton: {
+    backgroundColor: COLORS.PRIMARY_ACCENT,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  timeButtonText: {
+    fontSize: 12,
+    color: COLORS.WHITE,
+    fontWeight: '600',
   },
   infoSection: {
     backgroundColor: COLORS.SCALE_COLOR,
@@ -245,23 +436,95 @@ const styles = StyleSheet.create({
     opacity: 0.8,
     lineHeight: 20,
   },
-  saveButton: {
-    backgroundColor: COLORS.CTA_BUTTON,
-    paddingVertical: 16,
-    paddingHorizontal: 40,
-    borderRadius: 25,
-    alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  
+  // Стили для TimePicker
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  timePickerModal: {
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 20,
+    padding: 20,
+    width: '85%',
+    maxHeight: '70%',
+  },
+  timePickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
     textAlign: 'center',
+    marginBottom: 20,
+  },
+  timePickerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  timeColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  timeColumnTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 10,
+  },
+  timeScrollView: {
+    maxHeight: 200,
+    backgroundColor: COLORS.SCALE_COLOR,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+  },
+  timeSeparator: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    marginHorizontal: 20,
+  },
+  timeOption: {
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    marginVertical: 2,
+  },
+  timeOptionSelected: {
+    backgroundColor: COLORS.PRIMARY_ACCENT,
+  },
+  timeOptionText: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
+  },
+  timeOptionTextSelected: {
+    color: COLORS.WHITE,
+    fontWeight: '600',
+  },
+  timePickerButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 20,
+  },
+  timePickerButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    backgroundColor: COLORS.SCALE_COLOR,
+  },
+  timePickerButtonPrimary: {
+    backgroundColor: COLORS.CTA_BUTTON,
+  },
+  timePickerButtonText: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
+  },
+  timePickerButtonTextPrimary: {
+    fontWeight: '600',
   },
 });
 

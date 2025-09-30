@@ -17,8 +17,8 @@ import { COLORS } from './src/constants/colors';
 import messaging from '@react-native-firebase/messaging';
 import { Alert } from 'react-native';
 
-// Импорт сервиса уведомлений (пока отключен)
-// import NotificationService from './src/NotificationService';
+// Импорт сервиса уведомлений
+import NotificationService from './src/NotificationService';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createStackNavigator<RootStackParamList>();
@@ -92,12 +92,37 @@ function TabNavigator() {
 
 // Главная навигация приложения
 function App(): JSX.Element {
-  // Firebase push уведомления
+  // Firebase push уведомления и локальные уведомления
   useEffect(() => {
     console.log('App.tsx: Component mounted!');
-    console.log('App.tsx: Setting up Firebase notifications...');
+    console.log('App.tsx: Setting up notifications...');
     
     const setupNotifications = async () => {
+      // Инициализация NotificationService
+      try {
+        console.log('App.tsx: Initializing NotificationService...');
+        const initialized = await NotificationService.initialize();
+        if (initialized) {
+          console.log('App.tsx: NotificationService initialized successfully');
+          
+          // Запрашиваем разрешения
+          const permissionsGranted = await NotificationService.requestPermissions();
+          console.log('App.tsx: Permissions granted:', permissionsGranted);
+          
+          // Загружаем сохраненные настройки и планируем уведомления
+          const savedSettings = await NotificationService.loadNotificationSettings();
+          if (savedSettings) {
+            console.log('App.tsx: Loaded saved notification settings, scheduling notifications...');
+            await NotificationService.scheduleNotificationsFromSettings(savedSettings);
+          } else {
+            console.log('App.tsx: No saved notification settings found');
+          }
+        } else {
+          console.error('App.tsx: Failed to initialize NotificationService');
+        }
+      } catch (error) {
+        console.error('App.tsx: Error initializing NotificationService:', error);
+      }
       try {
         // Запрашиваем разрешение
         const authStatus = await messaging().requestPermission();

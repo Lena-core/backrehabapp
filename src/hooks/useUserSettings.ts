@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserSettings } from '../types';
+import NotificationService from '../NotificationService';
 
 // Глобальные слушатели для обновлений настроек
 type SettingsListener = () => void;
@@ -40,9 +41,18 @@ export const useUserSettings = (): UseUserSettingsReturn => {
       sessions: 3,
     },
     notificationSettings: {
-      exerciseReminders: true,
-      spineHygieneTips: true,
-      educationalMessages: true,
+      exerciseReminders: {
+        enabled: true,
+        time: { hour: 9, minute: 0 } // 9:00 по умолчанию
+      },
+      spineHygieneTips: {
+        enabled: true,
+        time: { hour: 14, minute: 0 } // 14:00 по умолчанию
+      },
+      educationalMessages: {
+        enabled: true,
+        time: { hour: 20, minute: 0 } // 20:00 по умолчанию
+      },
     },
   });
 
@@ -58,14 +68,29 @@ export const useUserSettings = (): UseUserSettingsReturn => {
         const parsed = JSON.parse(savedSettings);
         console.log('Loaded settings:', parsed);
         
-        // Обратная совместимость: добавляем настройки уведомлений если их нет
+        // Миграция старых настроек уведомлений к новому формату
         if (!parsed.notificationSettings) {
+          // Настроек нет вообще - создаем по умолчанию
+          parsed.notificationSettings = getDefaultSettings().notificationSettings;
+          await AsyncStorage.setItem('userSettings', JSON.stringify(parsed));
+        } else if (typeof parsed.notificationSettings.exerciseReminders === 'boolean') {
+          // Старый формат (boolean) - конвертируем в новый
+          const oldSettings = parsed.notificationSettings;
           parsed.notificationSettings = {
-            exerciseReminders: true,
-            spineHygieneTips: true,
-            educationalMessages: true,
+            exerciseReminders: {
+              enabled: oldSettings.exerciseReminders || false,
+              time: { hour: 9, minute: 0 }
+            },
+            spineHygieneTips: {
+              enabled: oldSettings.spineHygieneTips || false,
+              time: { hour: 14, minute: 0 }
+            },
+            educationalMessages: {
+              enabled: oldSettings.educationalMessages || false,
+              time: { hour: 20, minute: 0 }
+            }
           };
-          // Сохраняем обновленные настройки
+          console.log('Migrated old notification settings to new format');
           await AsyncStorage.setItem('userSettings', JSON.stringify(parsed));
         }
         
@@ -95,6 +120,15 @@ export const useUserSettings = (): UseUserSettingsReturn => {
     try {
       console.log('Saving settings:', newSettings);
       await AsyncStorage.setItem('userSettings', JSON.stringify(newSettings));
+      
+      // Синхронизируем настройки с NotificationService
+      if (newSettings.notificationSettings && NotificationService.isServiceInitialized()) {
+        console.log('Syncing notification settings with NotificationService...');
+        await NotificationService.saveNotificationSettings(newSettings.notificationSettings);
+        await NotificationService.scheduleNotificationsFromSettings(newSettings.notificationSettings);
+        console.log('Notification settings synchronized successfully');
+      }
+      
       setSettings(newSettings);
       setError(null);
       
