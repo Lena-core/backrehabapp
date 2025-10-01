@@ -131,3 +131,36 @@ export type SettingsStackParamList = {
   PrivacyPolicy: undefined;
   UserAgreement: undefined;
 };
+
+// ============ ТИПЫ ДЛЯ ОНБОРДИНГА ============
+
+// Ключи для хранения данных онбординга
+export const ONBOARDING_STORAGE_KEYS = {
+  HAS_COMPLETED: 'hasCompletedOnboarding',
+  ONBOARDING_DATA: 'onboardingData',
+} as const;
+
+// Данные, собранные во время онбординга
+export interface OnboardingData {
+  painLevel: PainLevel;
+  exerciseSettings: ExerciseSettings;
+  walkSettings: WalkSettings;
+  notificationSettings: NotificationSettings;
+  acknowledgedDisclaimer: boolean;
+  completedAt?: number; // timestamp
+}
+
+// Навигация онбординга
+export type OnboardingStackParamList = {
+  Welcome: undefined;
+  MedicalDisclaimer: undefined;
+  PainApproach: undefined;
+  PainLevel: undefined;
+  ExercisePreview: undefined;
+  ExerciseSettingsDetail: undefined;
+  NotificationSetup: undefined;
+  Ready: undefined;
+};
+
+// Режим настройки упражнений в онбординге
+export type ExerciseSettingsMode = 'recommended' | 'detailed';

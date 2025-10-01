@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import LinearGradient from 'react-native-linear-gradient';
 import { SettingsStackParamList } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
+import { useOnboarding } from '../contexts';
 
 type SettingsMainScreenNavigationProp = StackNavigationProp<SettingsStackParamList, 'SettingsMain'>;
 
@@ -62,9 +64,33 @@ const settingsMenuItems: SettingsMenuItem[] = [
 
 const SettingsMainScreen: React.FC = () => {
   const navigation = useNavigation<SettingsMainScreenNavigationProp>();
+  const { resetOnboarding } = useOnboarding();
+  const [isResetting, setIsResetting] = useState(false);
 
   const handleMenuItemPress = (screen: keyof SettingsStackParamList) => {
     navigation.navigate(screen);
+  };
+
+  const handleResetOnboarding = () => {
+    Alert.alert(
+      'Сбросить онбординг?',
+      'Это действие перезапустит приложение и заново покажет приветственный экран. Используйте это только для тестирования.',
+      [
+        {
+          text: 'Отмена',
+          style: 'cancel',
+        },
+        {
+          text: 'Сбросить',
+          style: 'destructive',
+          onPress: async () => {
+            setIsResetting(true);
+            await resetOnboarding();
+            // Не нужно setIsResetting(false), т.к. приложение автоматически переключится
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -106,6 +132,18 @@ const SettingsMainScreen: React.FC = () => {
           Приведенная информация носит справочный характер. Если вам требуется 
           медицинская консультация или постановка диагноза, обратитесь к специалисту.
         </Text>
+
+        {/* Кнопка сброса онбординга (для тестирования) */}
+        <TouchableOpacity
+          style={styles.resetButton}
+          onPress={handleResetOnboarding}
+          disabled={isResetting}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.resetButtonText}>
+            {isResetting ? 'Сбрасываем...' : '🔄 Сбросить онбординг (тест)'}
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
     </LinearGradient>
   );
@@ -196,6 +234,19 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     opacity: 0.7,
     marginTop: 20,
+  },
+  resetButton: {
+    backgroundColor: COLORS.SECONDARY_ACCENT,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    alignItems: 'center',
+    opacity: 0.8,
+  },
+  resetButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
   },
 });
 
