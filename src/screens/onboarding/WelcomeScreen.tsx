@@ -24,7 +24,7 @@ const WelcomeScreen: React.FC = () => {
   const navigation = useNavigation<WelcomeScreenNavigationProp>();
 
   const handleStart = () => {
-    navigation.navigate('MedicalDisclaimer');
+    navigation.navigate('Intro');
   };
 
   return (

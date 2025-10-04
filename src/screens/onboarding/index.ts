@@ -1,6 +1,9 @@
 // Экспорт экранов онбординга
 
 export { default as WelcomeScreen } from './WelcomeScreen';
+export { default as IntroScreen } from './IntroScreen';
+export { default as HowItWorksScreen } from './HowItWorksScreen';
+export { default as AppFeaturesScreen } from './AppFeaturesScreen';
 export { default as MedicalDisclaimerScreen } from './MedicalDisclaimerScreen';
 export { default as PainApproachScreen } from './PainApproachScreen';
 export { default as PainLevelScreen } from './PainLevelScreen';

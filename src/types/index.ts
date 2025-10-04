@@ -153,6 +153,9 @@ export interface OnboardingData {
 // Навигация онбординга
 export type OnboardingStackParamList = {
   Welcome: undefined;
+  Intro: undefined;
+  HowItWorks: undefined;
+  AppFeatures: undefined;
   MedicalDisclaimer: undefined;
   PainApproach: undefined;
   PainLevel: undefined;

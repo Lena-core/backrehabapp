@@ -8,6 +8,9 @@ import { COLORS } from '../constants';
 
 // Импорт экранов онбординга
 import WelcomeScreen from '../screens/onboarding/WelcomeScreen';
+import IntroScreen from '../screens/onboarding/IntroScreen';
+import HowItWorksScreen from '../screens/onboarding/HowItWorksScreen';
+import AppFeaturesScreen from '../screens/onboarding/AppFeaturesScreen';
 import MedicalDisclaimerScreen from '../screens/onboarding/MedicalDisclaimerScreen';
 import PainApproachScreen from '../screens/onboarding/PainApproachScreen';
 import PainLevelScreen from '../screens/onboarding/PainLevelScreen';
@@ -33,6 +36,27 @@ const OnboardingNavigator: React.FC = () => {
       <Stack.Screen 
         name="Welcome" 
         component={WelcomeScreen}
+        options={{
+          animationEnabled: true,
+        }}
+      />
+      <Stack.Screen 
+        name="Intro" 
+        component={IntroScreen}
+        options={{
+          animationEnabled: true,
+        }}
+      />
+      <Stack.Screen 
+        name="HowItWorks" 
+        component={HowItWorksScreen}
+        options={{
+          animationEnabled: true,
+        }}
+      />
+      <Stack.Screen 
+        name="AppFeatures" 
+        component={AppFeaturesScreen}
         options={{
           animationEnabled: true,
         }}

@@ -1,4 +1,4 @@
-// Экран с объяснением подхода "без боли" - перед выбором уровня боли
+// Экран "Самое важное правило" - никакой боли во время упражнений
 
 import React from 'react';
 import {
@@ -35,35 +35,26 @@ const PainApproachScreen: React.FC = () => {
       <View style={styles.content}>
         {/* Заголовок */}
         <View style={styles.header}>
-          <Text style={styles.title}>Наш подход</Text>
+          <Text style={styles.title}>Самое важное правило</Text>
         </View>
 
         {/* Основной контент */}
         <View style={styles.mainContent}>
-          {/* Иконка */}
-          <View style={styles.iconContainer}>
-            <Text style={styles.icon}>💡</Text>
-          </View>
-
           {/* Текст */}
           <View style={styles.textContainer}>
-            <Text style={styles.mainText}>
-              Основа нашего подхода — полный отказ от упражнений через боль.
+            <Text style={styles.mainHeading}>
+              Никакой боли во время упражнений!
             </Text>
             
-            <Text style={styles.secondaryText}>
-              Именно ваш сегодняшний уровень дискомфорта определит, какие упражнения и с какой интенсивностью мы будем выполнять.
-            </Text>
-
-            <Text style={styles.secondaryText}>
-              Это нужно, чтобы не повредить заживающие ткани и не замедлить ваше восстановление.
+            <Text style={styles.explanationText}>
+              Если вы чувствуете острую боль — остановитесь. Наша цель — найти и расширить диапазон движений, которые не вызывают дискомфорта.
             </Text>
           </View>
 
           {/* Декоративная карточка */}
           <View style={styles.highlightCard}>
             <Text style={styles.highlightText}>
-              ⚠️ Упражнения через боль могут навредить вашему восстановлению
+              Упражнения через боль могут замедлить ваше восстановление и повредить заживающие ткани.
             </Text>
           </View>
         </View>
@@ -99,6 +90,7 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: 20,
     justifyContent: 'space-between',
+    paddingBottom: 40,
   },
   header: {
     alignItems: 'center',
@@ -115,38 +107,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  iconContainer: {
-    marginBottom: 30,
-  },
-  icon: {
-    fontSize: 80,
-  },
   textContainer: {
     alignItems: 'center',
     paddingHorizontal: 10,
   },
-  mainText: {
-    fontSize: 20,
-    fontWeight: '600',
+  mainHeading: {
+    fontSize: 24,
+    fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
     textAlign: 'center',
-    lineHeight: 28,
-    marginBottom: 24,
+    lineHeight: 32,
+    marginBottom: 20,
   },
-  secondaryText: {
-    fontSize: 16,
+  explanationText: {
+    fontSize: 17,
     color: COLORS.TEXT_PRIMARY,
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 16,
-    opacity: 0.8,
+    lineHeight: 26,
+    opacity: 0.85,
   },
   highlightCard: {
-    backgroundColor: COLORS.PAIN_ACUTE,
+    backgroundColor: COLORS.PRIMARY_ACCENT,
     borderRadius: 12,
     padding: 20,
     marginTop: 30,
     marginHorizontal: 10,
+    borderWidth: 2,
+    borderColor: COLORS.PAIN_ACUTE,
   },
   highlightText: {
     fontSize: 15,
@@ -159,7 +146,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
-    paddingVertical: 20,
   },
   backButton: {
     flex: 1,

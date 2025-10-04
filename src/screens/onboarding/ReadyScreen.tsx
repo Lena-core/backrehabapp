@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Dimensions,
+  Image,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 
@@ -45,21 +46,20 @@ const ReadyScreen: React.FC = () => {
       >
         {/* Заголовок */}
         <View style={styles.header}>
-          <Text style={styles.title}>{READY_SCREEN.title}</Text>
+          <Text style={styles.title}>Отлично!{"\n"}Ваш план готов</Text>
+          <View style={styles.logoContainer}>
+            <Image
+              source={require('../../assets/icons/logo2.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
         </View>
 
         {/* Мотивационное сообщение */}
         <View style={styles.messageContainer}>
-          <Text style={styles.emoji}>🎉</Text>
           <Text style={styles.motivationalMessage}>
-            {READY_SCREEN.motivationalMessage}
-          </Text>
-        </View>
-
-        {/* Напоминание */}
-        <View style={styles.reminderContainer}>
-          <Text style={styles.reminderText}>
-            {READY_SCREEN.reminder}
+            Вы сделали важный шаг к здоровой спине. Помните: слушайте свое тело и двигайтесь без боли. Вы на верном пути!
           </Text>
         </View>
 
@@ -72,7 +72,7 @@ const ReadyScreen: React.FC = () => {
             </View>
           ) : (
             <CustomButton
-              title={READY_SCREEN.startButton}
+              title="Начать первую тренировку"
               onPress={handleStart}
               size="large"
               variant="primary"
@@ -108,37 +108,28 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
     textAlign: 'center',
+    marginBottom: 20,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: width * 0.35,
+    height: width * 0.35,
+    maxWidth: 140,
+    maxHeight: 140,
   },
   messageContainer: {
     alignItems: 'center',
     marginBottom: 32,
     paddingHorizontal: 20,
   },
-  emoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
   motivationalMessage: {
     fontSize: 18,
     lineHeight: 28,
     color: COLORS.TEXT_PRIMARY,
     textAlign: 'center',
-  },
-  planContainer: {
-    marginBottom: 24,
-  },
-  reminderContainer: {
-    backgroundColor: COLORS.PRIMARY_ACCENT,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 32,
-  },
-  reminderText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: COLORS.TEXT_PRIMARY,
-    textAlign: 'center',
-    fontStyle: 'italic',
   },
   buttonContainer: {
     marginTop: 'auto',

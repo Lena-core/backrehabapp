@@ -122,10 +122,17 @@ const NotificationSetupScreen: React.FC = () => {
             onTimeChange={(time) => handleTimeChange('educationalMessages', time)}
           />
 
+          {/* Совет про утро */}
+          <View style={styles.tipContainer}>
+            <Text style={styles.tipText}>
+              💡 <Text style={styles.tipBold}>Совет:</Text> Не занимайтесь сразу после пробуждения. Подождите хотя бы час. Утром диски позвоночника более уязвимы.
+            </Text>
+          </View>
+
           {/* Пояснение */}
           <View style={styles.infoContainer}>
             <Text style={styles.infoText}>
-              💡 Вы сможете изменить настройки уведомлений в любое время в разделе "Настройки"
+              Вы всегда сможете изменить эти настройки в разделе «Профиль».
             </Text>
           </View>
         </ScrollView>
@@ -184,6 +191,22 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 20,
   },
+  tipContainer: {
+    backgroundColor: COLORS.SECONDARY_ACCENT,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  tipText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
+  },
+  tipBold: {
+    fontWeight: '700',
+  },
   infoContainer: {
     backgroundColor: COLORS.PRIMARY_ACCENT,
     borderRadius: 12,
@@ -195,6 +218,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: COLORS.TEXT_PRIMARY,
     textAlign: 'center',
+    fontStyle: 'italic',
   },
   buttonContainer: {
     flexDirection: 'row',

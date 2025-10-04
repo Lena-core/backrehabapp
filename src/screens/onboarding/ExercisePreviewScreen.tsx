@@ -179,7 +179,10 @@ const ExercisePreviewScreen: React.FC = () => {
       <View style={styles.content}>
         {/* Заголовок */}
         <View style={styles.header}>
-          <Text style={styles.title}>{EXERCISE_PREVIEW_SCREEN.title}</Text>
+          <Text style={styles.title}>Ваша программа</Text>
+          <Text style={styles.headerSubtitle}>
+            Мы начнем с самых безопасных упражнений для стабилизации позвоночника, постепенно усложняя программу в зависимости от самочувствия.
+          </Text>
         </View>
 
         {/* Контент */}
@@ -188,6 +191,26 @@ const ExercisePreviewScreen: React.FC = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Блок с упражнениями Большой Тройки */}
+          {showExercises && (
+            <View style={styles.bigThreeContainer}>
+              <View style={styles.exercisesList}>
+                <View style={styles.exerciseItem}>
+                  <Text style={styles.bulletPoint}>•</Text>
+                  <Text style={styles.exerciseName}>Модифицированное скручивание</Text>
+                </View>
+                <View style={styles.exerciseItem}>
+                  <Text style={styles.bulletPoint}>•</Text>
+                  <Text style={styles.exerciseName}>Боковой мост</Text>
+                </View>
+                <View style={styles.exerciseItem}>
+                  <Text style={styles.bulletPoint}>•</Text>
+                  <Text style={styles.exerciseName}>Птица-собака</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* Предупреждение для острой боли */}
           {!showExercises && (
             <View style={styles.warningContainer}>
@@ -210,14 +233,22 @@ const ExercisePreviewScreen: React.FC = () => {
 
           {/* Рекомендуемая программа */}
           <View style={styles.programContainer}>
-            <Text style={styles.sectionTitle}>Ваша программа</Text>
-            
             {/* Упражнения "Большой Тройки" */}
             {showExercises && (
               <View style={styles.programCard}>
                 <Text style={styles.programLabel}>Упражнения "Большой Тройки"</Text>
                 <Text style={styles.programValue}>
-                  {formatExerciseSettingsDescription(localExerciseSettings)}
+                  {localExerciseSettings.repsSchema.length} подхода: {localExerciseSettings.repsSchema.map((reps, index) => 
+                    index === localExerciseSettings.repsSchema.length - 1 
+                      ? `${reps} повторени${reps === 1 ? 'е' : reps < 5 ? 'я' : 'й'}` 
+                      : `${reps} повторени${reps === 1 ? 'е' : reps < 5 ? 'я' : 'й'} - отдых - `
+                  ).join('')}
+                </Text>
+                <Text style={styles.programValue}>
+                  время статического удержания: {localExerciseSettings.holdTime} сек
+                </Text>
+                <Text style={styles.programValue}>
+                  отдых: {localExerciseSettings.restTime} сек
                 </Text>
               </View>
             )}
@@ -234,6 +265,18 @@ const ExercisePreviewScreen: React.FC = () => {
             </View>
           </View>
 
+          {/* Объяснение пирамидки */}
+          {showExercises && (
+            <View style={styles.pyramidExplanation}>
+              <Text style={styles.pyramidTitle}>
+                📊 Почему мы делаем подходы «пирамидкой»?
+              </Text>
+              <Text style={styles.pyramidText}>
+                Мы используем схему нисходящей пирамиды (например, 6-4-2 повторения). Это позволяет выработать выносливость, сохраняя идеальную технику и не допуская усталости, которая может привести к боли.
+              </Text>
+            </View>
+          )}
+
           {/* Чекбокс "Изменить настройки" */}
           <TouchableOpacity
             style={styles.checkboxContainer}
@@ -247,13 +290,6 @@ const ExercisePreviewScreen: React.FC = () => {
               Изменить настройки программы
             </Text>
           </TouchableOpacity>
-
-          {/* Напоминание */}
-          <View style={styles.reminderContainer}>
-            <Text style={styles.reminderText}>
-              💡 Помните: регулярность важнее интенсивности. Лучше выполнить упражнения с правильной техникой, чем гнаться за количеством повторений.
-            </Text>
-          </View>
 
           {/* Редактируемые настройки (показываются только если чекбокс активен) */}
           {customizeSettings && (
@@ -391,6 +427,14 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     textAlign: 'center',
   },
+  headerSubtitle: {
+    fontSize: 15,
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
+    marginTop: 8,
+    opacity: 0.8,
+    lineHeight: 22,
+  },
   scrollView: {
     flex: 1,
   },
@@ -436,6 +480,55 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: COLORS.TEXT_PRIMARY,
     whiteSpace: 'pre-line',
+  },
+  // Блок "Большая тройка"
+  bigThreeContainer: {
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  exercisesList: {
+    marginBottom: 0,
+  },
+  exerciseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  bulletPoint: {
+    fontSize: 20,
+    color: COLORS.CTA_BUTTON,
+    marginRight: 12,
+    fontWeight: 'bold',
+  },
+  exerciseName: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+    fontWeight: '500',
+  },
+  pyramidExplanation: {
+    backgroundColor: COLORS.PRIMARY_ACCENT,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  pyramidTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 8,
+  },
+  pyramidText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.9,
   },
   // Рекомендуемая программа
   programContainer: {
@@ -508,19 +601,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: COLORS.TEXT_PRIMARY,
     lineHeight: 20,
-  },
-  // Напоминание
-  reminderContainer: {
-    backgroundColor: COLORS.PRIMARY_ACCENT,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  reminderText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: COLORS.TEXT_PRIMARY,
-    textAlign: 'center',
   },
   // Редактируемые настройки
   settingsContainer: {
