@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -117,6 +117,21 @@ const ExerciseExecutionScreen: React.FC = () => {
     schemeOneCompleted: false,
   });
 
+  // Ref для управления видео
+  const videoRef = useRef<any>(null);
+  
+  // Состояние для управления воспроизведением видео
+  const [videoDuration, setVideoDuration] = useState(4); // Длительность видео в секундах (теперь 4 сек: 2 вперед + 2 назад)
+  const [videoPlaybackState, setVideoPlaybackState] = useState<{
+    paused: boolean;
+    shouldSeek: boolean;
+    seekTime: number;
+  }>({
+    paused: true,
+    shouldSeek: true,
+    seekTime: 0,
+  });
+
   // Загрузка прогресса
   useEffect(() => {
     loadExerciseProgress();
@@ -155,6 +170,47 @@ const ExerciseExecutionScreen: React.FC = () => {
       }));
     }
   }, [timer.currentTime, timer.isRunning, timer.phase, timer.holdSoundPlayed, exerciseType, settings, playSound]);
+
+  // Синхронизация видео с фазами таймера (только для curl_up, side_plank, bird_dog)
+  useEffect(() => {
+    if (exerciseType === 'walk') return; // Для walk оставляем текущее поведение
+
+    switch (timer.phase) {
+      case 'prepare':
+      case 'rest':
+      case 'completed':
+      case 'schemeCompleted':
+        // Показываем первый кадр
+        setVideoPlaybackState({
+          paused: true,
+          shouldSeek: true,
+          seekTime: 0,
+        });
+        break;
+
+      case 'exercise':
+        // Проигрываем видео вперед в начале фазы (первые 2 секунды)
+        if (timer.currentTime === (settings?.exerciseSettings.holdTime || 7)) {
+          setVideoPlaybackState({
+            paused: false,
+            shouldSeek: true,
+            seekTime: 0,
+          });
+        }
+        break;
+
+      case 'miniRest':
+        // Проигрываем вторую половину видео (реверс, с 2 до 4 сек)
+        if (timer.currentTime === 3) {
+          setVideoPlaybackState({
+            paused: false,
+            shouldSeek: true,
+            seekTime: 2, // Начинаем со 2 секунды
+          });
+        }
+        break;
+    }
+  }, [timer.phase, timer.currentTime, exerciseType, settings]);
 
   // Функции для сохранения промежуточного состояния упражнений
   const saveExerciseProgress = async (progress: Partial<ExerciseProgress>) => {
@@ -505,6 +561,53 @@ const ExerciseExecutionScreen: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Обработчики для видео
+  const handleVideoLoad = (data: any) => {
+    if (exerciseType === 'walk') return;
+    setVideoDuration(data.duration);
+    console.log('Video loaded, duration:', data.duration);
+  };
+
+  const handleVideoProgress = (data: any) => {
+    if (exerciseType === 'walk') return;
+    
+    const currentTime = data.currentTime;
+    
+    // Во время exercise: остановить видео на 2 секунде (последний кадр первой половины)
+    if (timer.phase === 'exercise' && !videoPlaybackState.paused && currentTime >= 2) {
+      setVideoPlaybackState(prev => ({
+        ...prev,
+        paused: true,
+        shouldSeek: false,
+        seekTime: 2,
+      }));
+    }
+  };
+
+  const handleVideoEnd = () => {
+    if (exerciseType === 'walk') return;
+    
+    // Видео закончилось (дошло до 4 сек) - это конец miniRest
+    // Возвращаемся на первый кадр
+    if (timer.phase === 'miniRest' && !videoPlaybackState.paused) {
+      setVideoPlaybackState({
+        paused: true,
+        shouldSeek: true,
+        seekTime: 0,
+      });
+    }
+  };
+
+  // Выполнение seek когда нужно
+  useEffect(() => {
+    if (exerciseType === 'walk') return;
+    
+    if (videoPlaybackState.shouldSeek && videoRef.current) {
+      videoRef.current.seek(videoPlaybackState.seekTime);
+      setVideoPlaybackState(prev => ({ ...prev, shouldSeek: false }));
+    }
+  }, [videoPlaybackState.shouldSeek, videoPlaybackState.seekTime, exerciseType]);
+
   if (!settings) {
     return (
       <LinearGradient colors={GRADIENTS.MAIN_BACKGROUND} style={styles.container}>
@@ -520,17 +623,22 @@ const ExerciseExecutionScreen: React.FC = () => {
       {/* Фоновое видео на весь экран */}
       <View style={styles.gifContainer}>
         <Video
+          ref={videoRef}
           source={EXERCISE_ANIMATIONS[exerciseType] || DEFAULT_PLACEHOLDER}
           style={styles.backgroundGif}
           resizeMode="contain"
-          repeat={true}
+          repeat={exerciseType === 'walk'}
           muted={true}
-          paused={false}
+          paused={exerciseType === 'walk' ? false : videoPlaybackState.paused}
           poster=""
           ignoreSilentSwitch="ignore"
           playWhenInactive={true}
           playInBackground={false}
+          onLoad={handleVideoLoad}
+          onProgress={handleVideoProgress}
+          onEnd={handleVideoEnd}
           onError={(error) => console.log('Video error:', error)}
+          progressUpdateInterval={50}
         />
       </View>
       
