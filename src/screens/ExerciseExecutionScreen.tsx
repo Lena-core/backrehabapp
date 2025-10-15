@@ -640,6 +640,57 @@ const ExerciseExecutionScreen: React.FC = () => {
           onError={(error) => console.log('Video error:', error)}
           progressUpdateInterval={50}
         />
+        
+        {/* Градиент-виньетка на весь экран */}
+        {exerciseType === 'walk' ? (
+          // Для квадратного видео walk - более длинный плавный переход
+          <LinearGradient
+            colors={[
+              'rgba(147, 148, 143, 1)',     // Непрозрачный вверху
+              'rgba(147, 148, 143, 0.95)',  // Промежуточная прозрачность
+              'rgba(147, 148, 143, 0)',     // Полностью прозрачный
+              'rgba(147, 148, 143, 0)',     // Прозрачный в центре
+              'rgba(147, 148, 143, 0)',     // Полностью прозрачный
+              'rgba(147, 148, 143, 0.95)',  // Промежуточная прозрачность
+              'rgba(147, 148, 143, 1)'      // Непрозрачный внизу
+            ]}
+            locations={[0, 0.25, 0.3, 0.5, 0.7, 0.75, 1]}
+            style={styles.gradientVignette}
+            pointerEvents="none"
+          />
+        ) : (
+          // Для 16:9 видео (curl_up, side_plank, bird_dog) - короткий плавный переход
+          <LinearGradient
+            colors={[
+              'rgba(147, 148, 143, 1)',     // Непрозрачный вверху
+              'rgba(147, 148, 143, 0.95)',  // Промежуточная прозрачность
+              'rgba(147, 148, 143, 0)',     // Полностью прозрачный
+              'rgba(147, 148, 143, 0)',     // Прозрачный в центре
+              'rgba(147, 148, 143, 0)',     // Полностью прозрачный
+              'rgba(147, 148, 143, 0.95)',  // Промежуточная прозрачность
+              'rgba(147, 148, 143, 1)'      // Непрозрачный внизу
+            ]}
+            locations={[0, 0.35, 0.37, 0.5, 0.63, 0.65, 1]}
+            style={styles.gradientVignette}
+            pointerEvents="none"
+          />
+        )}
+        
+        {/* Дополнительное затемнение краёв экрана (виньетка для UI) */}
+        <LinearGradient
+          colors={[
+            'rgba(0, 0, 0, 0.4)',      // Затемнение сверху
+            'rgba(0, 0, 0, 0.2)',      // Промежуточное
+            'rgba(0, 0, 0, 0)',        // Прозрачный
+            'rgba(0, 0, 0, 0)',        // Прозрачный в центре
+            'rgba(0, 0, 0, 0)',        // Прозрачный
+            'rgba(0, 0, 0, 0.2)',      // Промежуточное
+            'rgba(0, 0, 0, 0.4)'       // Затемнение снизу
+          ]}
+          locations={[0, 0.08, 0.15, 0.5, 0.85, 0.92, 1]}
+          style={styles.gradientVignette}
+          pointerEvents="none"
+        />
       </View>
       
       <View style={styles.contentOverlay}>
@@ -900,6 +951,7 @@ const ExerciseExecutionScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#93948f', // Серый фон как у видео
   },
   gifContainer: {
     position: 'absolute',
@@ -907,16 +959,27 @@ const styles = StyleSheet.create({
     left: 0,
     width: screenWidth,
     height: screenHeight,
+    zIndex: 0,
   },
   backgroundGif: {
     width: screenWidth,
     height: screenHeight,
     position: 'absolute',
     top: 0,
+    zIndex: 0,
   },
   contentOverlay: {
     flex: 1,
     position: 'relative',
+    zIndex: 3,
+  },
+  gradientVignette: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 2,
   },
   loadingContainer: {
     flex: 1,
@@ -938,6 +1001,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 15,
     paddingTop: 20,
+    zIndex: 4,
   },
   backButton: {
     width: 45,
@@ -1001,6 +1065,7 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 20,
     paddingBottom: 30,
+    zIndex: 4,
   },
   timerContainer: {
     alignItems: 'center',
