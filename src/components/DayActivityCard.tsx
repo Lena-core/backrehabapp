@@ -5,15 +5,18 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  TouchableOpacity,
+  Modal,
 } from 'react-native';
 import { COLORS } from '../constants/colors';
 import { DayHistory, PainLevel } from '../types';
-import { getPainLevelColor } from '../utils/storage';
+import { getPainLevelColor, savePainStatus, updateDayPainLevel } from '../utils/storage';
 import { PAIN_ICONS } from '../assets/icons';
 
 interface DayActivityCardProps {
   dayHistory: DayHistory | null;
   loading: boolean;
+  onPainLevelChange?: () => void; // Колбэк для обновления данных
 }
 
 const PAIN_LEVEL_LABELS: Record<PainLevel, string> = {
@@ -31,7 +34,9 @@ const EXERCISE_NAMES: Record<string, string> = {
   walk: 'Прогулка',
 };
 
-const DayActivityCard: React.FC<DayActivityCardProps> = ({ dayHistory, loading }) => {
+const DayActivityCard: React.FC<DayActivityCardProps> = ({ dayHistory, loading, onPainLevelChange }) => {
+  const [showPainModal, setShowPainModal] = React.useState(false);
+  const [selectedPainLevel, setSelectedPainLevel] = React.useState<PainLevel | null>(null);
   if (loading) {
     return (
       <View style={styles.container}>
@@ -111,8 +116,91 @@ const DayActivityCard: React.FC<DayActivityCardProps> = ({ dayHistory, loading }
     }
   };
 
+  const handlePainLevelPress = () => {
+    if (dayHistory?.painLevel) {
+      setSelectedPainLevel(dayHistory.painLevel);
+    }
+    setShowPainModal(true);
+  };
+
+  const handlePainLevelSelect = async (level: PainLevel) => {
+    if (!dayHistory) return;
+
+    try {
+      // Обновляем уровень боли в истории
+      await updateDayPainLevel(dayHistory.date, level);
+      
+      // Если это сегодня, обновляем также текущий статус
+      const today = new Date().toISOString().split('T')[0];
+      if (dayHistory.date === today) {
+        await savePainStatus(level);
+      }
+      
+      setShowPainModal(false);
+      
+      // Вызываем колбэк для обновления данных
+      if (onPainLevelChange) {
+        onPainLevelChange();
+      }
+    } catch (error) {
+      console.error('Error updating pain level:', error);
+    }
+  };
+
+  const renderPainModal = () => {
+    const painOptions: { level: PainLevel; label: string }[] = [
+      { level: 'none', label: 'Всё хорошо' },
+      { level: 'mild', label: 'Немного болит' },
+      { level: 'moderate', label: 'Болит' },
+      { level: 'severe', label: 'Сильно болит' },
+      { level: 'acute', label: 'Острая боль' },
+    ];
+
+    return (
+      <Modal
+        visible={showPainModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowPainModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Изменить уровень боли</Text>
+            
+            {painOptions.map((option) => (
+              <TouchableOpacity
+                key={option.level}
+                style={[
+                  styles.painOption,
+                  { backgroundColor: getPainLevelColor(option.level) },
+                  selectedPainLevel === option.level && styles.painOptionSelected,
+                ]}
+                onPress={() => handlePainLevelSelect(option.level)}
+              >
+                <Image 
+                  source={getPainIcon(option.level)} 
+                  style={styles.painOptionIcon}
+                  resizeMode="contain"
+                />
+                <Text style={styles.painOptionText}>{option.label}</Text>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setShowPainModal(false)}
+            >
+              <Text style={styles.modalCancelText}>Отмена</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Дата */}
       <Text style={styles.dateText}>{formatDate(dayHistory.date)}</Text>
 
@@ -120,10 +208,14 @@ const DayActivityCard: React.FC<DayActivityCardProps> = ({ dayHistory, loading }
       {dayHistory.painLevel && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Уровень боли</Text>
-          <View style={[
-            styles.painCard,
-            { backgroundColor: getPainLevelColor(dayHistory.painLevel) }
-          ]}>
+          <TouchableOpacity
+            style={[
+              styles.painCard,
+              { backgroundColor: getPainLevelColor(dayHistory.painLevel) }
+            ]}
+            onPress={handlePainLevelPress}
+            activeOpacity={0.7}
+          >
             <Image 
               source={getPainIcon(dayHistory.painLevel)} 
               style={styles.painIcon}
@@ -132,7 +224,8 @@ const DayActivityCard: React.FC<DayActivityCardProps> = ({ dayHistory, loading }
             <Text style={styles.painLabel}>
               {PAIN_LEVEL_LABELS[dayHistory.painLevel]}
             </Text>
-          </View>
+            <Text style={styles.painEditHint}>Нажмите, чтобы изменить</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -192,6 +285,8 @@ const DayActivityCard: React.FC<DayActivityCardProps> = ({ dayHistory, loading }
         </View>
       )}
     </ScrollView>
+    {renderPainModal()}
+    </>
   );
 };
 

@@ -187,6 +187,10 @@ const DiaryScreen: React.FC = () => {
             <DayActivityCard
               dayHistory={dayHistory}
               loading={loading}
+              onPainLevelChange={() => {
+                loadDayHistory();
+                loadCurrentPainLevel();
+              }}
             />
           </View>
         )}
