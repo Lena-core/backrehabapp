@@ -6,3 +6,4 @@ export { default as PainLevelCard } from './PainLevelCard';
 export { default as NotificationCard } from './NotificationCard';
 export { default as HorizontalCalendar } from './HorizontalCalendar';
 export { default as DayActivityCard } from './DayActivityCard';
+export { default as PainStatistics } from './PainStatistics';

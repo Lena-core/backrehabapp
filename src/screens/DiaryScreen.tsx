@@ -14,6 +14,7 @@ import { getDayHistory, getTodayPainStatus, getCurrentDateString } from '../util
 import { getPainLevelColor } from '../utils/storage';
 import HorizontalCalendar from '../components/HorizontalCalendar';
 import DayActivityCard from '../components/DayActivityCard';
+import PainStatistics from '../components/PainStatistics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { PAIN_ICONS } from '../assets/icons';
 
@@ -34,6 +35,7 @@ const DiaryScreen: React.FC = () => {
   const [dayHistory, setDayHistory] = useState<DayHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentPainLevel, setCurrentPainLevel] = useState<string>('none');
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
   // Обновление данных при возврате на экран
   useFocusEffect(
@@ -191,11 +193,7 @@ const DiaryScreen: React.FC = () => {
 
         {activeTab === 'statistics' && (
           <View style={styles.content}>
-            <View style={styles.placeholderContainer}>
-              <Text style={styles.placeholderText}>
-                Статистика появится позже
-              </Text>
-            </View>
+            <PainStatistics currentMonth={currentMonth} />
           </View>
         )}
       </ScrollView>
