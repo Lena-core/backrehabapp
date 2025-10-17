@@ -119,6 +119,7 @@ export type RootStackParamList = {
 export type TabParamList = {
   Home: undefined;
   Profile: undefined;
+  Diary: undefined;
   Settings: undefined;
 };
 
@@ -131,6 +132,34 @@ export type SettingsStackParamList = {
   PrivacyPolicy: undefined;
   UserAgreement: undefined;
 };
+
+// ============ ТИПЫ ДЛЯ ДНЕВНИКА (ИСТОРИИ) ============
+
+// Данные о выполненном упражнении
+export interface CompletedExercise {
+  exerciseId: ExerciseType;
+  exerciseName: string;
+  completedAt: string;          // ISO timestamp
+  holdTime: number;             // Настройки, которые использовались
+  repsSchema: number[];         // при выполнении
+  restTime: number;
+  totalSets: number;            // Сколько подходов было выполнено
+}
+
+// История активности за день
+export interface DayHistory {
+  date: string;                 // YYYY-MM-DD
+  painLevel: PainLevel | null;  // Уровень боли в этот день
+  exercises: CompletedExercise[]; // Выполненные упражнения
+}
+
+// Данные для календаря (краткая инфа о дне)
+export interface CalendarDay {
+  date: string;                 // YYYY-MM-DD
+  hasActivity: boolean;         // Есть ли активность (упражнения или уровень боли)
+  painLevel: PainLevel | null;
+  exerciseCount: number;        // Количество выполненных упражнений
+}
 
 // ============ ТИПЫ ДЛЯ ОНБОРДИНГА ============
 

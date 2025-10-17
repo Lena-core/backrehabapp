@@ -17,11 +17,12 @@ import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 
-import { ExerciseType, ExerciseSession, UserSettings, RootStackParamList, ExerciseProgress, ExerciseButtonState } from '../types';
+import { ExerciseType, ExerciseSession, UserSettings, RootStackParamList, ExerciseProgress, ExerciseButtonState, CompletedExercise } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
 import { EXERCISE_DESCRIPTIONS } from '../constants/exercises/descriptions';
 import { useSounds } from '../hooks';
 import { useUserSettings } from '../hooks/useUserSettings';
+import { saveDayExercise } from '../utils/storage';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -319,19 +320,31 @@ const ExerciseExecutionScreen: React.FC = () => {
 
       // Сохранение прогресса для ходьбы
       try {
-        const today = new Date().toISOString().split('T')[0];
-        const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
-        
-        if (savedExercises) {
-          const exercises = JSON.parse(savedExercises);
-          const updatedExercises = exercises.map((ex: any) =>
-            ex.id === exerciseType ? { ...ex, completed: true } : ex
-          );
-          await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
-        }
-      } catch (error) {
-        console.error('Error saving progress:', error);
+      const today = new Date().toISOString().split('T')[0];
+      const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+      
+      if (savedExercises) {
+      const exercises = JSON.parse(savedExercises);
+      const updatedExercises = exercises.map((ex: any) =>
+      ex.id === exerciseType ? { ...ex, completed: true } : ex
+      );
+      await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
       }
+        
+      // Сохранение выполненного упражнения в историю
+        const completedExercise: CompletedExercise = {
+              exerciseId: exerciseType,
+              exerciseName: exerciseName,
+              completedAt: new Date().toISOString(),
+              holdTime: 0, // Для ходьбы не используется
+              repsSchema: [],
+              restTime: 0,
+              totalSets: 1,
+            };
+            await saveDayExercise(completedExercise);
+          } catch (error) {
+            console.error('Error saving progress:', error);
+          }
 
       // Очищаем промежуточное состояние для ходьбы
       await clearExerciseProgress();
@@ -381,6 +394,22 @@ const ExerciseExecutionScreen: React.FC = () => {
             schemeOneCompleted: true,
           }));
           
+          // Сохраняем завершённую первую схему в историю
+          try {
+            const completedExercise: CompletedExercise = {
+              exerciseId: exerciseType,
+              exerciseName: `${exerciseName} (схема 1)`,
+              completedAt: new Date().toISOString(),
+              holdTime: settings.exerciseSettings.holdTime,
+              repsSchema: settings.exerciseSettings.repsSchema,
+              restTime: settings.exerciseSettings.restTime,
+              totalSets: repsSchema.length, // Все подходы первой схемы
+            };
+            await saveDayExercise(completedExercise);
+          } catch (error) {
+            console.error('Error saving scheme 1:', error);
+          }
+          
           // Сохраняем промежуточное состояние bird_dog
           await saveExerciseProgress({
             completedSets: repsSchema.length, // Все подходы первой схемы завершены
@@ -412,6 +441,26 @@ const ExerciseExecutionScreen: React.FC = () => {
               );
               await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
             }
+            
+            // Сохранение выполненного упражнения в историю
+            const totalSets = exerciseType === 'bird_dog' 
+              ? settings.exerciseSettings.repsSchema.length // Для bird_dog - только вторая схема
+              : settings.exerciseSettings.repsSchema.length;
+            
+            const completedExerciseName = exerciseType === 'bird_dog'
+              ? `${exerciseName} (схема 2)`
+              : exerciseName;
+            
+            const completedExercise: CompletedExercise = {
+              exerciseId: exerciseType,
+              exerciseName: completedExerciseName,
+              completedAt: new Date().toISOString(),
+              holdTime: settings.exerciseSettings.holdTime,
+              repsSchema: settings.exerciseSettings.repsSchema,
+              restTime: settings.exerciseSettings.restTime,
+              totalSets: totalSets,
+            };
+            await saveDayExercise(completedExercise);
           } catch (error) {
             console.error('Error saving progress:', error);
           }
@@ -431,6 +480,22 @@ const ExerciseExecutionScreen: React.FC = () => {
           phase: 'rest',
           instruction: EXERCISE_INSTRUCTIONS[exerciseType].rest,
         }));
+        
+        // Сохраняем выполненный подход в историю
+        try {
+          const completedExercise: CompletedExercise = {
+            exerciseId: exerciseType,
+            exerciseName: exerciseName,
+            completedAt: new Date().toISOString(),
+            holdTime: settings.exerciseSettings.holdTime,
+            repsSchema: settings.exerciseSettings.repsSchema,
+            restTime: settings.exerciseSettings.restTime,
+            totalSets: 1, // Один подход завершён
+          };
+          await saveDayExercise(completedExercise);
+        } catch (error) {
+          console.error('Error saving completed set:', error);
+        }
         
         // Сохраняем прогресс после завершения подхода
         await saveExerciseProgress({

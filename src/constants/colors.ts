@@ -23,10 +23,25 @@ export const COLORS = {
   // Цвета текста
   TEXT_PRIMARY: '#2D2D2D',    // Основной текст (темно-серый)
   TEXT_INACTIVE: '#D6D6D6',   // Неактивные элементы (серый)
+  
+  // Цвета для календаря (дневник)
+  CALENDAR_ACTIVE_DAY: '#4CAF50',     // Зелёный кружок для дней с активностью
+  CALENDAR_TODAY_DOT: '#2D2D2D',      // Точка для текущего дня
+  CALENDAR_SELECTED_BG: '#FEE370',    // Фон выбранного дня
+  CALENDAR_DAY_TEXT: '#2D2D2D',       // Текст дня
+  CALENDAR_INACTIVE_TEXT: '#D6D6D6',  // Текст неактивного дня
 };
 
 // Градиенты
 export const GRADIENTS = {
   MAIN_BACKGROUND: [COLORS.WHITE, COLORS.BACKGROUND_BOTTOM],
   CONTENT_BACKGROUND: [COLORS.CONTENT_BACKGROUND, COLORS.BACKGROUND_BOTTOM],
+};
+
+// Вспомогательные функции для работы с цветами
+export const hexToRGBA = (hex: string, alpha: number): string => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };

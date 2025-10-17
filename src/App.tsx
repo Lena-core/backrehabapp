@@ -10,6 +10,7 @@ import messaging from '@react-native-firebase/messaging';
 import PainTrackerScreen from './screens/PainTrackerScreen';
 import DayPlanScreen from './screens/DayPlanScreen';
 import ExerciseExecutionScreen from './screens/ExerciseExecutionScreen';
+import DiaryScreen from './screens/DiaryScreen';
 import SettingsStackNavigator from './navigation/SettingsStackNavigator';
 import OnboardingNavigator from './navigation/OnboardingNavigator';
 
@@ -38,6 +39,8 @@ function TabNavigator() {
             iconName = 'home';
           } else if (route.name === 'Profile') {
             iconName = 'sentiment-satisfied';
+          } else if (route.name === 'Diary') {
+            iconName = 'event-note';
           } else if (route.name === 'Settings') {
             iconName = 'settings';
           } else {
@@ -80,6 +83,13 @@ function TabNavigator() {
         component={PainTrackerScreen}
         options={{
           title: 'Самочувствие',
+        }}
+      />
+      <Tab.Screen 
+        name="Diary" 
+        component={DiaryScreen}
+        options={{
+          title: 'Дневник',
         }}
       />
       <Tab.Screen 
