@@ -23,6 +23,8 @@ import { EXERCISE_DESCRIPTIONS } from '../constants/exercises/descriptions';
 import { useSounds } from '../hooks';
 import { useUserSettings } from '../hooks/useUserSettings';
 import { saveDayExercise } from '../utils/storage';
+import { getExerciseInfoFromLegacy, getExerciseSettingsFromLegacy } from '../utils/legacyAdapter';
+import { getExerciseById } from '../constants/exercises/exercisesData';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -31,9 +33,10 @@ type ExerciseExecutionRouteProp = RouteProp<RootStackParamList, 'ExerciseExecuti
 interface TimerState {
   currentTime: number;
   isRunning: boolean;
-  phase: 'prepare' | 'exercise' | 'miniRest' | 'rest' | 'completed' | 'schemeCompleted';
+  phase: 'prepare' | 'exercise' | 'miniRest' | 'rest' | 'rolling' | 'completed' | 'schemeCompleted';
   currentSet: number;
   currentRep: number;
+  currentSession: number; // Для foam_rolling: текущая сессия
   instruction: string;
   holdSoundPlayed: boolean;
   currentScheme: 1 | 2; // Для bird_dog: 1 = левая рука+правая нога, 2 = правая рука+левая нога
@@ -50,6 +53,48 @@ const EXERCISE_ANIMATIONS: Record<ExerciseType, any> = {
 
 // По умолчанию для ошибок загрузки
 const DEFAULT_PLACEHOLDER = require('../assets/videos/curl_up.mp4');
+
+/**
+ * Динамическая загрузка видео для всех упражнений
+ * Сначала пытаемся использовать extendedData, затем fallback на старые ID
+ */
+const getExerciseVideo = (exerciseId: string): any => {
+  console.log('[getExerciseVideo] Input exerciseId:', exerciseId);
+  
+  // Маппинг известных видео
+  const videoMap: Record<string, any> = {
+    'curl_up': require('../assets/videos/curl_up.mp4'),
+    'side_plank': require('../assets/videos/side_plank.mp4'),
+    'side_plank_lvl2': require('../assets/videos/side_plank_lvl2.mp4'),
+    'side_plank_lvl3': require('../assets/videos/side_plank_lvl3.mp4'),
+    'bird_dog': require('../assets/videos/bird_dog.mp4'),
+    'dead_bug': require('../assets/videos/dead_bug.mp4'),
+    'pryamaya_planka': require('../assets/videos/pryamaya_planka.mp4'),
+    'tazovy_most': require('../assets/videos/tazovy_most.mp4'),
+    'tazovy_most_disk': require('../assets/videos/tazovy_most_disk.mp4'),
+    'tazovy_most_odna_noga': require('../assets/videos/tazovy_most_odna_noga.mp4'),
+    'tazovy_most_resina': require('../assets/videos/tazovy_most_resina.mp4'),
+    'koshka': require('../assets/videos/koshka.mp4'),
+    'posa_rebenka': require('../assets/videos/posa_rebenka.mp4'),
+    'bear_walk': require('../assets/videos/bear_walk.mp4'),
+    'podem_kolenei': require('../assets/videos/podem kolenei.mp4'), // Имя файла с пробелом
+    'walk': require('../assets/videos/walk_sample.mp4'),
+    'prokatka_ass': require('../assets/videos/prokatka_ass.mp4'),
+    'prokatka_bedro': require('../assets/videos/prokatka_bedro.mp4'),
+    'prokatka_ikri': require('../assets/videos/prokatka_ikri.mp4'),
+    'dotyagivania': require('../assets/videos/dotyagivania.mp4'),
+  };
+  
+  const video = videoMap[exerciseId];
+  
+  if (video) {
+    console.log('[getExerciseVideo] Video found for:', exerciseId);
+    return video;
+  } else {
+    console.warn('[getExerciseVideo] Video NOT found for:', exerciseId, '- using placeholder');
+    return DEFAULT_PLACEHOLDER;
+  }
+};
 
 // Надписи для каждого упражнения (для walk - старые надписи)
 const EXERCISE_INSTRUCTIONS: Record<ExerciseType, Record<string, string>> = {
@@ -93,6 +138,27 @@ const EXERCISE_INSTRUCTIONS: Record<ExerciseType, Record<string, string>> = {
   }
 };
 
+// Универсальные инструкции для новых упражнений
+const DEFAULT_INSTRUCTIONS: Record<string, string> = {
+  prepare: 'Приготовьтесь',
+  start: 'Выполняйте упражнение',
+  hold: 'Удерживайте положение',
+  miniRest: 'Отдых',
+  rest: 'Отдых',
+  rolling: 'Прокатывайте мышцу', // Для foam_rolling
+  completed: 'Упражнение завершено!'
+};
+
+// Функция получения инструкций с fallback
+const getInstructions = (exerciseId: string): Record<string, string> => {
+  // Проверяем, есть ли в старых инструкциях
+  if (exerciseId in EXERCISE_INSTRUCTIONS) {
+    return EXERCISE_INSTRUCTIONS[exerciseId as ExerciseType];
+  }
+  // Возвращаем универсальные
+  return DEFAULT_INSTRUCTIONS;
+};
+
 const ExerciseExecutionScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<ExerciseExecutionRouteProp>();
@@ -106,13 +172,24 @@ const ExerciseExecutionScreen: React.FC = () => {
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
   const [exerciseProgress, setExerciseProgress] = useState<ExerciseProgress | null>(null);
   const [buttonState, setButtonState] = useState<ExerciseButtonState>('start');
+  
+  // Состояние для хранения текущего exerciseId и видео
+  const [currentExerciseId, setCurrentExerciseId] = useState<string>(exerciseType);
+  const [videoSource, setVideoSource] = useState<any>(DEFAULT_PLACEHOLDER);
+  const [isLoadingVideo, setIsLoadingVideo] = useState<boolean>(true);
+  
+  // Состояние для executionType и settings из extendedData
+  const [executionType, setExecutionType] = useState<string>('hold'); // По умолчанию hold
+  const [exerciseSettings, setExerciseSettings] = useState<any>(null); // Settings из extendedData
+  
   const [timer, setTimer] = useState<TimerState>({
     currentTime: 0,
     isRunning: false,
     phase: 'prepare',
     currentSet: 1,
     currentRep: 1,
-    instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
+    currentSession: 1, // Для foam_rolling
+    instruction: getInstructions(exerciseType).prepare,
     holdSoundPlayed: false,
     currentScheme: 1,
     schemeOneCompleted: false,
@@ -137,6 +214,79 @@ const ExerciseExecutionScreen: React.FC = () => {
   useEffect(() => {
     loadExerciseProgress();
   }, []);
+
+  // Загрузка exerciseId из extendedData и обновление видео
+  useEffect(() => {
+    const loadExerciseData = async () => {
+      try {
+        setIsLoadingVideo(true);
+        const today = new Date().toISOString().split('T')[0];
+        const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+        
+        let exerciseId = exerciseType; // По умолчанию
+        let execType = 'hold'; // По умолчанию
+        let exSettings = null;
+        
+        console.log('=== LOADING EXERCISE DATA ===');
+        console.log('exerciseType (route param):', exerciseType);
+        console.log('exerciseName (route param):', exerciseName);
+        
+        if (savedExercises) {
+          const exercises = JSON.parse(savedExercises);
+          console.log('Saved exercises:', exercises.map((e: any) => ({ id: e.id, name: e.name })));
+          
+          const currentExercise = exercises.find((ex: any) => ex.id === exerciseType);
+          console.log('Current exercise found:', currentExercise ? 'YES' : 'NO');
+          
+          if (currentExercise?.extendedData) {
+            // Есть extendedData
+            if (currentExercise.extendedData.exerciseId) {
+              exerciseId = currentExercise.extendedData.exerciseId;
+              console.log('Using extendedData.exerciseId:', exerciseId);
+            }
+            
+            // Извлекаем executionType
+            if (currentExercise.extendedData.exerciseInfo?.executionType) {
+              execType = currentExercise.extendedData.exerciseInfo.executionType;
+              console.log('Using extendedData.executionType:', execType);
+            }
+            
+            // Извлекаем settings
+            if (currentExercise.extendedData.settings) {
+              exSettings = currentExercise.extendedData.settings;
+              console.log('Using extendedData.settings:', exSettings);
+            }
+          } else {
+            // Нет extendedData - используем старый exerciseType
+            console.log('No extendedData, using legacy exerciseType:', exerciseType);
+          }
+        } else {
+          console.log('No saved exercises found');
+        }
+        
+        // Устанавливаем state
+        console.log('Final exerciseId:', exerciseId);
+        console.log('Final executionType:', execType);
+        setCurrentExerciseId(exerciseId);
+        setExecutionType(execType);
+        setExerciseSettings(exSettings);
+        
+        const video = getExerciseVideo(exerciseId);
+        console.log('Video source:', video);
+        setVideoSource(video);
+        setIsLoadingVideo(false);
+        console.log('=== DATA LOADING COMPLETE ===');
+      } catch (error) {
+        console.error('Error loading exercise data:', error);
+        // Fallback на старое видео
+        const fallbackVideo = EXERCISE_ANIMATIONS[exerciseType] || DEFAULT_PLACEHOLDER;
+        setVideoSource(fallbackVideo);
+        setIsLoadingVideo(false);
+      }
+    };
+    
+    loadExerciseData();
+  }, [exerciseType, exerciseName]);
 
   // Логика таймера
   useEffect(() => {
@@ -167,7 +317,7 @@ const ExerciseExecutionScreen: React.FC = () => {
       setTimer(prev => ({
         ...prev,
         holdSoundPlayed: true,
-        instruction: EXERCISE_INSTRUCTIONS[exerciseType].hold,
+        instruction: getInstructions(exerciseType).hold,
       }));
     }
   }, [timer.currentTime, timer.isRunning, timer.phase, timer.holdSoundPlayed, exerciseType, settings, playSound]);
@@ -253,7 +403,7 @@ const ExerciseExecutionScreen: React.FC = () => {
           setTimer(prev => ({
             ...prev,
             phase: 'completed',
-            instruction: EXERCISE_INSTRUCTIONS[exerciseType].completed,
+            instruction: getInstructions(exerciseType).completed,
           }));
           return;
         }
@@ -279,7 +429,7 @@ const ExerciseExecutionScreen: React.FC = () => {
               phase: 'schemeCompleted',
               schemeOneCompleted: true,
               currentScheme: 2,
-              instruction: EXERCISE_INSTRUCTIONS[exerciseType].schemeCompleted,
+              instruction: getInstructions(exerciseType).schemeCompleted,
             }));
           }
           
@@ -307,6 +457,108 @@ const ExerciseExecutionScreen: React.FC = () => {
   };
 
   const handleTimerComplete = async () => {
+    // FOAM_ROLLING логика
+    if (executionType === 'foam_rolling' && exerciseSettings) {
+      const rollingDuration = exerciseSettings.rollingDuration || 60;
+      const rollingSessions = exerciseSettings.rollingSessions || 2;
+      const restTime = exerciseSettings.restTime || 30;
+
+      if (timer.phase === 'prepare') {
+        // Переход от подготовки к прокатке
+        playSound('start');
+        setTimer(prev => ({
+          ...prev,
+          currentTime: rollingDuration,
+          phase: 'rolling',
+          instruction: getInstructions(currentExerciseId).rolling || 'Прокатывайте мышцу',
+          holdSoundPlayed: false,
+        }));
+      } else if (timer.phase === 'rolling') {
+        // Прокатка завершена
+        const isLastSession = timer.currentSession >= rollingSessions;
+
+        if (isLastSession) {
+          // Все сессии завершены
+          playSound('completed');
+          setTimer(prev => ({
+            ...prev,
+            isRunning: false,
+            phase: 'completed',
+            currentTime: 0,
+            instruction: getInstructions(currentExerciseId).completed,
+          }));
+
+          // Сохранение прогресса
+          try {
+            const today = new Date().toISOString().split('T')[0];
+            const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+            
+            if (savedExercises) {
+              const exercises = JSON.parse(savedExercises);
+              const updatedExercises = exercises.map((ex: any) =>
+                ex.id === exerciseType ? { ...ex, completed: true } : ex
+              );
+              await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
+            }
+            
+            // Сохранение выполненного упражнения в историю
+            const completedExercise: CompletedExercise = {
+              exerciseId: exerciseType,
+              exerciseName: exerciseName,
+              completedAt: new Date().toISOString(),
+              holdTime: rollingDuration,
+              repsSchema: [],
+              restTime: restTime,
+              totalSets: rollingSessions,
+            };
+            await saveDayExercise(completedExercise);
+          } catch (error) {
+            console.error('Error saving progress:', error);
+          }
+
+          await clearExerciseProgress();
+          setButtonState('completed');
+          setTimeout(() => navigation.goBack(), 2000);
+        } else {
+          // Переход к отдыху между сессиями
+          playSound('rest');
+          setTimer(prev => ({
+            ...prev,
+            currentTime: restTime,
+            phase: 'rest',
+            instruction: getInstructions(currentExerciseId).rest,
+          }));
+          
+          // Сохраняем выполненную сессию в историю
+          try {
+            const completedExercise: CompletedExercise = {
+              exerciseId: exerciseType,
+              exerciseName: exerciseName,
+              completedAt: new Date().toISOString(),
+              holdTime: rollingDuration,
+              repsSchema: [],
+              restTime: restTime,
+              totalSets: 1,
+            };
+            await saveDayExercise(completedExercise);
+          } catch (error) {
+            console.error('Error saving completed session:', error);
+          }
+        }
+      } else if (timer.phase === 'rest') {
+        // Отдых завершен, переход к следующей сессии
+        playSound('prepare');
+        setTimer(prev => ({
+          ...prev,
+          currentTime: 5,
+          phase: 'prepare',
+          currentSession: prev.currentSession + 1,
+          instruction: getInstructions(currentExerciseId).prepare,
+        }));
+      }
+      return;
+    }
+
     // Для ходьбы - простая логика (старая)
     if (exerciseType === 'walk') {
       playSound('completed'); // Проигрываем complete.mp3
@@ -361,11 +613,12 @@ const ExerciseExecutionScreen: React.FC = () => {
     if (timer.phase === 'prepare') {
       // Переход от подготовки к упражнению
       playSound('start');
+      const instructions = getInstructions(exerciseType);
       const instruction = exerciseType === 'bird_dog' 
         ? (timer.currentScheme === 1 
-            ? EXERCISE_INSTRUCTIONS[exerciseType].startScheme1 
-            : EXERCISE_INSTRUCTIONS[exerciseType].startScheme2)
-        : EXERCISE_INSTRUCTIONS[exerciseType].start;
+            ? instructions.startScheme1 || instructions.start
+            : instructions.startScheme2 || instructions.start)
+        : instructions.start;
       
       setTimer(prev => ({
         ...prev,
@@ -390,7 +643,7 @@ const ExerciseExecutionScreen: React.FC = () => {
             isRunning: false,
             phase: 'schemeCompleted',
             currentTime: 0,
-            instruction: EXERCISE_INSTRUCTIONS[exerciseType].schemeCompleted,
+            instruction: getInstructions(exerciseType).schemeCompleted || getInstructions(exerciseType).completed,
             schemeOneCompleted: true,
           }));
           
@@ -426,7 +679,7 @@ const ExerciseExecutionScreen: React.FC = () => {
             isRunning: false,
             phase: 'completed',
             currentTime: 0,
-            instruction: EXERCISE_INSTRUCTIONS[exerciseType].completed,
+            instruction: getInstructions(exerciseType).completed,
           }));
 
           // Сохранение прогресса
@@ -478,7 +731,7 @@ const ExerciseExecutionScreen: React.FC = () => {
           ...prev,
           currentTime: restTime,
           phase: 'rest',
-          instruction: EXERCISE_INSTRUCTIONS[exerciseType].rest,
+          instruction: getInstructions(exerciseType).rest,
         }));
         
         // Сохраняем выполненный подход в историю
@@ -511,11 +764,12 @@ const ExerciseExecutionScreen: React.FC = () => {
       else {
         // Не последнее повторение, переход к мини-отдыху
         playSound('finish');
+        const instructions = getInstructions(exerciseType);
         const instruction = exerciseType === 'bird_dog' 
           ? (timer.currentScheme === 1 
-              ? EXERCISE_INSTRUCTIONS[exerciseType].miniRestScheme1 
-              : EXERCISE_INSTRUCTIONS[exerciseType].miniRestScheme2)
-          : EXERCISE_INSTRUCTIONS[exerciseType].miniRest;
+              ? instructions.miniRestScheme1 || instructions.miniRest
+              : instructions.miniRestScheme2 || instructions.miniRest)
+          : instructions.miniRest;
         
         setTimer(prev => ({
           ...prev,
@@ -528,11 +782,12 @@ const ExerciseExecutionScreen: React.FC = () => {
     else if (timer.phase === 'miniRest') {
       // Мини-отдых завершен, переход к следующему повторению
       playSound('start');
+      const instructions = getInstructions(exerciseType);
       const instruction = exerciseType === 'bird_dog' 
         ? (timer.currentScheme === 1 
-            ? EXERCISE_INSTRUCTIONS[exerciseType].startScheme1 
-            : EXERCISE_INSTRUCTIONS[exerciseType].startScheme2)
-        : EXERCISE_INSTRUCTIONS[exerciseType].start;
+            ? instructions.startScheme1 || instructions.start
+            : instructions.startScheme2 || instructions.start)
+        : instructions.start;
       
       setTimer(prev => ({
         ...prev,
@@ -552,13 +807,32 @@ const ExerciseExecutionScreen: React.FC = () => {
         phase: 'prepare',
         currentSet: prev.currentSet + 1,
         currentRep: 1,
-        instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
+        instruction: getInstructions(exerciseType).prepare,
       }));
     }
   };
 
   const startExercise = () => {
     if (!settings) return;
+
+    // FOAM_ROLLING: используем executionType и exerciseSettings из extendedData
+    if (executionType === 'foam_rolling' && exerciseSettings) {
+      const rollingDuration = exerciseSettings.rollingDuration || 60;
+      playSound('start');
+      setTimer({
+        currentTime: 5, // Подготовка 5 секунд
+        isRunning: true,
+        phase: 'prepare',
+        currentSet: 1,
+        currentRep: 1,
+        currentSession: 1,
+        instruction: getInstructions(currentExerciseId).prepare,
+        holdSoundPlayed: false,
+        currentScheme: 1,
+        schemeOneCompleted: false,
+      });
+      return;
+    }
 
     if (exerciseType === 'walk') {
       // Для ходьбы оставляем старую простую логику
@@ -570,6 +844,7 @@ const ExerciseExecutionScreen: React.FC = () => {
         phase: 'exercise', // Сразу в фазу упражнения
         currentSet: 1,
         currentRep: 1,
+        currentSession: 1,
         instruction: 'Начните ходьбу. Держите спину ровно.',
         holdSoundPlayed: false,
         currentScheme: 1,
@@ -586,7 +861,7 @@ const ExerciseExecutionScreen: React.FC = () => {
         currentSet: 1,
         currentRep: 1,
         currentScheme: 2,
-        instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
+        instruction: getInstructions(exerciseType).prepare,
         holdSoundPlayed: false,
       }));
     } else if (buttonState === 'continue' && exerciseProgress) {
@@ -598,7 +873,8 @@ const ExerciseExecutionScreen: React.FC = () => {
         phase: 'prepare',
         currentSet: exerciseProgress.currentSet,
         currentRep: exerciseProgress.currentRep,
-        instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
+        currentSession: 1,
+        instruction: getInstructions(exerciseType).prepare,
         holdSoundPlayed: false,
         currentScheme: exerciseProgress.currentScheme || 1,
         schemeOneCompleted: exerciseProgress.schemeOneCompleted || false,
@@ -612,7 +888,8 @@ const ExerciseExecutionScreen: React.FC = () => {
         phase: 'prepare',
         currentSet: 1,
         currentRep: 1,
-        instruction: EXERCISE_INSTRUCTIONS[exerciseType].prepare,
+        currentSession: 1,
+        instruction: getInstructions(exerciseType).prepare,
         holdSoundPlayed: false,
         currentScheme: 1,
         schemeOneCompleted: false,
@@ -673,7 +950,7 @@ const ExerciseExecutionScreen: React.FC = () => {
     }
   }, [videoPlaybackState.shouldSeek, videoPlaybackState.seekTime, exerciseType]);
 
-  if (!settings) {
+  if (!settings || isLoadingVideo) {
     return (
       <LinearGradient colors={GRADIENTS.MAIN_BACKGROUND} style={styles.container}>
         <View style={styles.loadingContainer}>
@@ -688,8 +965,9 @@ const ExerciseExecutionScreen: React.FC = () => {
       {/* Фоновое видео на весь экран */}
       <View style={styles.gifContainer}>
         <Video
+          key={currentExerciseId} // Перерендер при смене exerciseId
           ref={videoRef}
-          source={EXERCISE_ANIMATIONS[exerciseType] || DEFAULT_PLACEHOLDER}
+          source={videoSource}
           style={styles.backgroundGif}
           resizeMode="contain"
           repeat={exerciseType === 'walk'}
@@ -821,11 +1099,36 @@ const ExerciseExecutionScreen: React.FC = () => {
             </View>
           )}
 
-          {/* Прогресс подходов */}
+          {/* Прогресс подходов / сессий */}
           {exerciseType !== 'walk' && (
             <View>
-              {/* Для bird_dog - отображаем два ряда */}
-              {exerciseType === 'bird_dog' ? (
+              {/* Для foam_rolling - отображаем прогресс сессий */}
+              {executionType === 'foam_rolling' && exerciseSettings ? (
+                <View style={styles.setsProgress}>
+                  {Array.from({ length: exerciseSettings.rollingSessions || 2 }, (_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.setCircle,
+                        {
+                          backgroundColor: 
+                            (index < timer.currentSession - 1) || 
+                            timer.phase === 'completed'
+                              ? COLORS.PRIMARY_ACCENT
+                              : (index === timer.currentSession - 1 && timer.isRunning)
+                              ? COLORS.PRIMARY_ACCENT
+                              : COLORS.WHITE,
+                          borderColor: COLORS.PRIMARY_ACCENT,
+                        },
+                      ]}>
+                      {((index < timer.currentSession - 1) || 
+                        timer.phase === 'completed') && (
+                        <Text style={styles.checkmark}>✓</Text>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              ) : exerciseType === 'bird_dog' ? (
                 <View>
                   {/* Первая схема: левая рука + правая нога */}
                   <View style={styles.schemeContainer}>
@@ -928,7 +1231,43 @@ const ExerciseExecutionScreen: React.FC = () => {
 
           {/* Параметры упражнения */}
           <View style={styles.parametersContainer}>
-            {exerciseType !== 'walk' ? (
+            {executionType === 'foam_rolling' && exerciseSettings ? (
+              <>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Длительность прокатки</Text>
+                  <Text style={styles.parameterValue}>
+                    {exerciseSettings.rollingDuration || 60} сек
+                  </Text>
+                </View>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Количество сессий</Text>
+                  <Text style={styles.parameterValue}>
+                    {exerciseSettings.rollingSessions || 2}
+                  </Text>
+                </View>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Отдых</Text>
+                  <Text style={styles.parameterValue}>
+                    {exerciseSettings.restTime || 30} сек
+                  </Text>
+                </View>
+              </>
+            ) : exerciseType === 'walk' ? (
+              <>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Длительность сессии</Text>
+                  <Text style={styles.parameterValue}>
+                    {settings.walkSettings.duration} мин
+                  </Text>
+                </View>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Количество сессий</Text>
+                  <Text style={styles.parameterValue}>
+                    {settings.walkSettings.sessions}
+                  </Text>
+                </View>
+              </>
+            ) : (
               <>
                 <View style={styles.parameter}>
                   <Text style={styles.parameterLabel}>Время удержания</Text>
@@ -946,21 +1285,6 @@ const ExerciseExecutionScreen: React.FC = () => {
                   <Text style={styles.parameterLabel}>Отдых</Text>
                   <Text style={styles.parameterValue}>
                     {settings.exerciseSettings.restTime} сек
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={styles.parameter}>
-                  <Text style={styles.parameterLabel}>Длительность сессии</Text>
-                  <Text style={styles.parameterValue}>
-                    {settings.walkSettings.duration} мин
-                  </Text>
-                </View>
-                <View style={styles.parameter}>
-                  <Text style={styles.parameterLabel}>Количество сессий</Text>
-                  <Text style={styles.parameterValue}>
-                    {settings.walkSettings.sessions}
                   </Text>
                 </View>
               </>

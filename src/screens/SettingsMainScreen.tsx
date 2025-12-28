@@ -40,6 +40,13 @@ const settingsMenuItems: SettingsMenuItem[] = [
     icon: '🔔',
   },
   {
+    id: 'test',
+    title: '🧪 Тестирование',
+    description: 'Проверка новой инфраструктуры упражнений',
+    screen: 'TestInfrastructure',
+    icon: '⚙️',
+  },
+  {
     id: 'feedback',
     title: 'Обратная связь',
     description: 'Отправить отзыв или предложение',

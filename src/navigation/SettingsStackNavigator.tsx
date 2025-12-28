@@ -10,6 +10,7 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import FeedbackScreen from '../screens/FeedbackScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import UserAgreementScreen from '../screens/UserAgreementScreen';
+import TestInfrastructureScreen from '../screens/TestInfrastructureScreen';
 
 const SettingsStack = createStackNavigator<SettingsStackParamList>();
 
@@ -71,6 +72,14 @@ const SettingsStackNavigator: React.FC = () => {
         component={UserAgreementScreen}
         options={{ 
           title: 'Пользовательское соглашение',
+          headerTitleAlign: 'center',
+        }}
+      />
+      <SettingsStack.Screen 
+        name="TestInfrastructure" 
+        component={TestInfrastructureScreen}
+        options={{ 
+          title: '🧪 Тестирование',
           headerTitleAlign: 'center',
         }}
       />

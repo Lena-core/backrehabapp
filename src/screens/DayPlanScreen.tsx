@@ -15,6 +15,8 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { PainLevel, Exercise, ExerciseType, RootStackParamList, UserSettings } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
 import { useUserSettings } from '../hooks/useUserSettings';
+import { getActiveProgram, getActiveProgramExercises, initializePrograms } from '../utils/programLoader';
+import { convertProgramExercisesToLegacy } from '../utils/legacyAdapter';
 
 const { width } = Dimensions.get('window');
 
@@ -25,6 +27,18 @@ const EXERCISE_DATA: Record<ExerciseType, { name: string; gif: string }> = {
   side_plank: { name: 'Боковая планка', gif: 'side_plank.gif' },
   bird_dog: { name: 'Птица-собака', gif: 'cat_dog_2.gif' },
   walk: { name: 'Ходьба', gif: '' },
+};
+
+// Преобразование PainLevel в число (1-5) для новой системы
+const mapPainLevelToNumber = (painLevel: PainLevel): number => {
+  const mapping: Record<PainLevel, number> = {
+    'none': 1,
+    'mild': 2,
+    'moderate': 3,
+    'severe': 4,
+    'acute': 5,
+  };
+  return mapping[painLevel] || 1;
 };
 
 // Функция расчета времени выполнения упражнения
@@ -95,7 +109,8 @@ const DayPlanScreen: React.FC = () => {
   const { settings, loading } = useUserSettings();
   const [currentPainLevel, setCurrentPainLevel] = useState<PainLevel>('none');
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [selectedExercise, setSelectedExercise] = useState<ExerciseType | null>(null);
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(null); // Используем exerciseId вместо ExerciseType
+  const [activeProgramName, setActiveProgramName] = useState<string>(''); // Название активной программы
 
   const loadDayPlan = useCallback(async () => {
     try {
@@ -115,21 +130,45 @@ const DayPlanScreen: React.FC = () => {
       
       setCurrentPainLevel(painLevel);
 
-      // Создаем обновленный план на основе текущих настроек
+      // Загружаем активную программу
+      const activeProgram = await getActiveProgram();
+      
+      if (!activeProgram) {
+        console.warn('No active program found, using fallback');
+        // Fallback: создаем старый план
+        const fallbackExercises = createDayPlan(painLevel, settings);
+        setExercises(fallbackExercises);
+        setActiveProgramName('Базовая программа');
+        return;
+      }
+
+      setActiveProgramName(activeProgram.nameRu);
+
+      // Преобразуем painLevel в число (1-5)
+      const painLevelNumber = mapPainLevelToNumber(painLevel);
+
+      // Загружаем упражнения из программы (с учетом адаптации по боли)
+      const programExercises = await getActiveProgramExercises(painLevelNumber);
+
+      // Загружаем сохраненные упражнения со статусом выполнения
       const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
-      let dayExercises: Exercise[];
+      let completedExerciseIds: string[] = [];
 
       if (savedExercises) {
         const oldExercises = JSON.parse(savedExercises);
-        // Обновляем описания на основе актуальных настроек
-        dayExercises = oldExercises.map((exercise: Exercise) => ({
-          ...exercise,
-          description: formatExerciseDescription(exercise.id as ExerciseType, settings)
-        }));
-      } else {
-        // Создаем новый план упражнений
-        dayExercises = createDayPlan(painLevel, settings);
+        completedExerciseIds = oldExercises
+          .filter((ex: Exercise) => ex.completed)
+          .map((ex: Exercise) => {
+            // Если есть extendedData - берем оттуда, иначе используем id
+            return ex.extendedData?.exerciseId || ex.id;
+          });
       }
+
+      // Преобразуем в старый формат
+      const dayExercises = await convertProgramExercisesToLegacy(
+        programExercises,
+        completedExerciseIds
+      );
 
       // Сохраняем обновленный план
       await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(dayExercises));
@@ -138,6 +177,7 @@ const DayPlanScreen: React.FC = () => {
       console.error('Error loading day plan:', error);
       // Fallback план
       setExercises(createDayPlan('none', settings));
+      setActiveProgramName('Базовая программа');
     }
   }, [settings]);
 
@@ -196,6 +236,19 @@ const DayPlanScreen: React.FC = () => {
     }
   }, [settings, loadDayPlan]);
 
+  // Инициализация программ при первом запуске
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await initializePrograms();
+        console.log('Programs initialized successfully');
+      } catch (error) {
+        console.error('Error initializing programs:', error);
+      }
+    };
+    init();
+  }, []);
+
   const createDayPlan = (painLevel: PainLevel, userSettings: UserSettings | null = null): Exercise[] => {
     const plan: Exercise[] = [];
 
@@ -243,9 +296,8 @@ const DayPlanScreen: React.FC = () => {
     });
   };
 
-  const isExerciseCompleted = (exerciseId: ExerciseType): boolean => {
-    const exercise = exercises.find(ex => ex.id === exerciseId);
-    return exercise?.completed || false;
+  const isExerciseCompleted = (exercise: Exercise): boolean => {
+    return exercise.completed || false;
   };
 
   // Отображаем индикатор загрузки пока настройки загружаются
@@ -265,6 +317,13 @@ const DayPlanScreen: React.FC = () => {
         {/* Заголовок */}
         <Text style={styles.title}>План На День</Text>
 
+        {/* Активная программа */}
+        {activeProgramName && (
+          <View style={styles.programBadge}>
+            <Text style={styles.programBadgeText}>🎯 {activeProgramName}</Text>
+          </View>
+        )}
+
         {/* Рекомендации */}
         <View style={styles.recommendationsContainer}>
           <Text style={styles.recommendationsText}>
@@ -275,14 +334,14 @@ const DayPlanScreen: React.FC = () => {
         {/* Список упражнений */}
         <View style={styles.exercisesContainer}>
           {exercises.map((exercise, index) => (
-            <View key={exercise.id} style={styles.exerciseRow}>
+            <View key={exercise.extendedData?.exerciseId || `${exercise.id}-${index}`} style={styles.exerciseRow}>
               {/* Индикатор прогресса */}
               <View style={styles.progressIndicator}>
                 <View
                   style={[
                     styles.progressLine,
                     {
-                      backgroundColor: isExerciseCompleted(exercise.id)
+                      backgroundColor: isExerciseCompleted(exercise)
                         ? COLORS.PRIMARY_ACCENT
                         : COLORS.SCALE_COLOR,
                     },
@@ -292,16 +351,16 @@ const DayPlanScreen: React.FC = () => {
                   style={[
                     styles.progressCircle,
                     {
-                      backgroundColor: isExerciseCompleted(exercise.id)
+                      backgroundColor: isExerciseCompleted(exercise)
                         ? COLORS.PRIMARY_ACCENT
                         : COLORS.WHITE,
-                      borderColor: isExerciseCompleted(exercise.id)
+                      borderColor: isExerciseCompleted(exercise)
                         ? COLORS.PRIMARY_ACCENT
                         : COLORS.SCALE_COLOR,
                     },
                   ]}
                 >
-                  {isExerciseCompleted(exercise.id) && (
+                  {isExerciseCompleted(exercise) && (
                     <Text style={styles.checkmark}>✓</Text>
                   )}
                 </View>
@@ -311,12 +370,15 @@ const DayPlanScreen: React.FC = () => {
               <TouchableOpacity
                 style={[
                   styles.exerciseCard,
-                  selectedExercise === exercise.id && styles.selectedCard,
+                  selectedExercise === (exercise.extendedData?.exerciseId || exercise.id) && styles.selectedCard,
                 ]}
-                onPress={() => setSelectedExercise(
-                  selectedExercise === exercise.id ? null : exercise.id
-                )}
-                disabled={isExerciseCompleted(exercise.id)}
+                onPress={() => {
+                  const exerciseKey = exercise.extendedData?.exerciseId || exercise.id;
+                  setSelectedExercise(
+                    selectedExercise === exerciseKey ? null : exerciseKey
+                  );
+                }}
+                disabled={isExerciseCompleted(exercise)}
               >
                 <View style={styles.cardContent}>
                   <Text style={styles.exerciseName}>{exercise.name}</Text>
@@ -325,7 +387,7 @@ const DayPlanScreen: React.FC = () => {
                   </Text>
                 </View>
 
-                {selectedExercise === exercise.id && !isExerciseCompleted(exercise.id) && (
+                {selectedExercise === (exercise.extendedData?.exerciseId || exercise.id) && !isExerciseCompleted(exercise) && (
                   <View style={styles.startButtonContainer}>
                     <TouchableOpacity
                       style={styles.startButton}
@@ -370,7 +432,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: 15,
+  },
+  programBadge: {
+    marginHorizontal: 20,
+    marginBottom: 15,
+    padding: 12,
+    backgroundColor: COLORS.PRIMARY_ACCENT,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  programBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
   },
   recommendationsContainer: {
     marginHorizontal: 20,

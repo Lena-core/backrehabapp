@@ -1,0 +1,426 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2024-12-26",
+  "programs": [
+    {
+      "id": "beginner",
+      "nameRu": "Для начинающих",
+      "nameEn": "For Beginners",
+      "description": "Базовая программа с легкими упражнениями для начала реабилитации",
+      "type": "preset",
+      "adaptToPainLevel": false,
+      "icon": "🟢",
+      "exercises": [
+        {
+          "exerciseId": "curl_up",
+          "order": 1,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 6,
+            "repsSchema": [3, 2, 1],
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "side_plank",
+          "order": 2,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 6,
+            "repsSchema": [3, 2, 1],
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "bird_dog",
+          "order": 3,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 6,
+            "repsSchema": [3, 2, 1],
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "tazovy_most",
+          "order": 4,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 8,
+            "repsSchema": [4, 3, 2],
+            "restTime": 20
+          }
+        },
+        {
+          "exerciseId": "walk",
+          "order": 5,
+          "isEnabled": true,
+          "settings": {
+            "walkDuration": 5,
+            "walkSessions": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "basic_adaptive",
+      "nameRu": "Базовая (адаптивная)",
+      "nameEn": "Basic Adaptive",
+      "description": "Автоматически подстраивается под ваш уровень боли",
+      "type": "preset",
+      "adaptToPainLevel": true,
+      "icon": "🟡",
+      "exercises": [
+        {
+          "exerciseId": "curl_up",
+          "order": 1,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 8,
+            "repsSchema": [3, 2, 1],
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "side_plank",
+          "order": 2,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 8,
+            "repsSchema": [3, 2, 1],
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "bird_dog",
+          "order": 3,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 8,
+            "repsSchema": [3, 2, 1],
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "tazovy_most",
+          "order": 4,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 10,
+            "repsSchema": [5, 4, 3],
+            "restTime": 20
+          }
+        },
+        {
+          "exerciseId": "walk",
+          "order": 5,
+          "isEnabled": true,
+          "settings": {
+            "walkDuration": 5,
+            "walkSessions": 1
+          }
+        }
+      ],
+      "painLevelRules": {
+        "4-5": [
+          {
+            "exerciseId": "dead_bug",
+            "order": 1,
+            "isEnabled": true,
+            "settings": {
+              "holdTime": 6,
+              "repsSchema": [4, 3, 2],
+              "restTime": 15
+            }
+          },
+          {
+            "exerciseId": "koshka",
+            "order": 2,
+            "isEnabled": true,
+            "settings": {
+              "dynamicReps": 10,
+              "dynamicSets": 2,
+              "restTime": 15
+            }
+          },
+          {
+            "exerciseId": "posa_rebenka",
+            "order": 3,
+            "isEnabled": true,
+            "settings": {
+              "holdTime": 30,
+              "repsSchema": [2, 1],
+              "restTime": 10
+            }
+          },
+          {
+            "exerciseId": "walk",
+            "order": 4,
+            "isEnabled": true,
+            "settings": {
+              "walkDuration": 5,
+              "walkSessions": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "acute_pain",
+      "nameRu": "При острой боли",
+      "nameEn": "For Acute Pain",
+      "description": "Мягкие упражнения для периодов обострения",
+      "type": "preset",
+      "adaptToPainLevel": false,
+      "icon": "🔴",
+      "exercises": [
+        {
+          "exerciseId": "dead_bug",
+          "order": 1,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 5,
+            "repsSchema": [3, 2, 1],
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "koshka",
+          "order": 2,
+          "isEnabled": true,
+          "settings": {
+            "dynamicReps": 8,
+            "dynamicSets": 2,
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "posa_rebenka",
+          "order": 3,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 30,
+            "repsSchema": [2, 1],
+            "restTime": 10
+          }
+        },
+        {
+          "exerciseId": "walk",
+          "order": 4,
+          "isEnabled": true,
+          "settings": {
+            "walkDuration": 5,
+            "walkSessions": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "advanced",
+      "nameRu": "Продвинутая",
+      "nameEn": "Advanced",
+      "description": "Для тех, кто готов к более сложным упражнениям",
+      "type": "preset",
+      "adaptToPainLevel": false,
+      "icon": "💪",
+      "exercises": [
+        {
+          "exerciseId": "side_plank_lvl3",
+          "order": 1,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 12,
+            "repsSchema": [3, 3, 2],
+            "restTime": 25
+          }
+        },
+        {
+          "exerciseId": "bear_walk",
+          "order": 2,
+          "isEnabled": true,
+          "settings": {
+            "dynamicReps": 12,
+            "dynamicSets": 3,
+            "restTime": 30
+          }
+        },
+        {
+          "exerciseId": "tazovy_most_disk",
+          "order": 3,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 10,
+            "repsSchema": [5, 4, 3],
+            "restTime": 25
+          }
+        },
+        {
+          "exerciseId": "pryamaya_planka",
+          "order": 4,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 25,
+            "repsSchema": [3, 2, 1],
+            "restTime": 30
+          }
+        },
+        {
+          "exerciseId": "bird_dog",
+          "order": 5,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 10,
+            "repsSchema": [4, 3, 2],
+            "restTime": 20
+          }
+        },
+        {
+          "exerciseId": "walk",
+          "order": 6,
+          "isEnabled": true,
+          "settings": {
+            "walkDuration": 10,
+            "walkSessions": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "recovery_massage",
+      "nameRu": "Восстановление + массаж",
+      "nameEn": "Recovery & Massage",
+      "description": "Комбинация растяжки и самомассажа для восстановления",
+      "type": "preset",
+      "adaptToPainLevel": false,
+      "icon": "🧘",
+      "exercises": [
+        {
+          "exerciseId": "koshka",
+          "order": 1,
+          "isEnabled": true,
+          "settings": {
+            "dynamicReps": 10,
+            "dynamicSets": 2,
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "posa_rebenka",
+          "order": 2,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 30,
+            "repsSchema": [2, 1],
+            "restTime": 10
+          }
+        },
+        {
+          "exerciseId": "prokatka_ass",
+          "order": 3,
+          "isEnabled": true,
+          "settings": {
+            "rollingDuration": 60,
+            "rollingSessions": 1
+          }
+        },
+        {
+          "exerciseId": "prokatka_bedro",
+          "order": 4,
+          "isEnabled": true,
+          "settings": {
+            "rollingDuration": 60,
+            "rollingSessions": 1
+          }
+        },
+        {
+          "exerciseId": "prokatka_ikri",
+          "order": 5,
+          "isEnabled": true,
+          "settings": {
+            "rollingDuration": 60,
+            "rollingSessions": 1
+          }
+        },
+        {
+          "exerciseId": "walk",
+          "order": 6,
+          "isEnabled": true,
+          "settings": {
+            "walkDuration": 5,
+            "walkSessions": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "core_strength",
+      "nameRu": "Укрепление кора",
+      "nameEn": "Core Strengthening",
+      "description": "Фокус на укреплении мышц корпуса",
+      "type": "preset",
+      "adaptToPainLevel": false,
+      "icon": "💥",
+      "exercises": [
+        {
+          "exerciseId": "curl_up",
+          "order": 1,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 8,
+            "repsSchema": [4, 3, 2],
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "side_plank_lvl2",
+          "order": 2,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 10,
+            "repsSchema": [3, 2, 1],
+            "restTime": 20
+          }
+        },
+        {
+          "exerciseId": "bird_dog",
+          "order": 3,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 8,
+            "repsSchema": [4, 3, 2],
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "pryamaya_planka",
+          "order": 4,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 20,
+            "repsSchema": [3, 2, 1],
+            "restTime": 30
+          }
+        },
+        {
+          "exerciseId": "dead_bug",
+          "order": 5,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 8,
+            "repsSchema": [4, 3, 2],
+            "restTime": 15
+          }
+        },
+        {
+          "exerciseId": "walk",
+          "order": 6,
+          "isEnabled": true,
+          "settings": {
+            "walkDuration": 5,
+            "walkSessions": 1
+          }
+        }
+      ]
+    }
+  ]
+}
