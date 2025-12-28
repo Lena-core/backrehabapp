@@ -205,7 +205,7 @@ const ExerciseExecutionScreen: React.FC = () => {
     shouldSeek: boolean;
     seekTime: number;
   }>({
-    paused: true,
+    paused: true, // По умолчанию пауза (для hold/reps)
     shouldSeek: true,
     seekTime: 0,
   });
@@ -305,7 +305,7 @@ const ExerciseExecutionScreen: React.FC = () => {
   useEffect(() => {
     if (!timer.isRunning || exerciseType === 'walk') return; // Исключаем ходьбу
 
-    const holdTime = settings?.exerciseSettings.holdTime || 7;
+    const holdTime = exerciseSettings?.holdTime || settings?.exerciseSettings.holdTime || 7;
     
     // Воспроизведение hold.mp3 при определенных условиях
     if (timer.phase === 'exercise' && 
@@ -317,51 +317,124 @@ const ExerciseExecutionScreen: React.FC = () => {
       setTimer(prev => ({
         ...prev,
         holdSoundPlayed: true,
-        instruction: getInstructions(exerciseType).hold,
+        instruction: getInstructions(currentExerciseId).hold,
       }));
     }
-  }, [timer.currentTime, timer.isRunning, timer.phase, timer.holdSoundPlayed, exerciseType, settings, playSound]);
+  }, [timer.currentTime, timer.isRunning, timer.phase, timer.holdSoundPlayed, exerciseType, exerciseSettings, settings, playSound, currentExerciseId]);
 
-  // Синхронизация видео с фазами таймера (только для curl_up, side_plank, bird_dog)
+  // Синхронизация видео с фазами таймера
   useEffect(() => {
-    if (exerciseType === 'walk') return; // Для walk оставляем текущее поведение
+    // Для ходьбы - всегда loop
+    if (exerciseType === 'walk') return;
 
-    switch (timer.phase) {
-      case 'prepare':
-      case 'rest':
-      case 'completed':
-      case 'schemeCompleted':
-        // Показываем первый кадр
+    // Для dynamic и foam_rolling - loop во время выполнения
+    if (executionType === 'dynamic' || executionType === 'foam_rolling') {
+      if (timer.phase === 'exercise' || timer.phase === 'rolling') {
+        // Проигрываем видео в loop
+        setVideoPlaybackState({
+          paused: false,
+          shouldSeek: false,
+          seekTime: 0,
+        });
+      } else {
+        // Пауза на первом кадре
         setVideoPlaybackState({
           paused: true,
           shouldSeek: true,
           seekTime: 0,
         });
-        break;
+      }
+      return;
+    }
 
-      case 'exercise':
-        // Проигрываем видео вперед в начале фазы (первые 2 секунды)
-        if (timer.currentTime === (settings?.exerciseSettings.holdTime || 7)) {
+    // Для hold/reps упражнений
+    const holdTime = exerciseSettings?.holdTime || settings?.exerciseSettings.holdTime || 7;
+    
+    // СТАТИЧНЫЕ ПОЗЫ (holdTime >= 20 сек): показываем конечное положение без анимации
+    const isStaticPose = holdTime >= 20;
+    
+    console.log('[VIDEO SYNC]', {
+      exerciseId: currentExerciseId,
+      phase: timer.phase,
+      holdTime,
+      isStaticPose,
+    });
+
+    if (isStaticPose) {
+      // Для статичных поз (поза ребенка, планки и т.д.)
+      switch (timer.phase) {
+        case 'prepare':
+        case 'rest':
+        case 'completed':
+        case 'schemeCompleted':
+          // Показываем первый кадр
+          console.log('[VIDEO SYNC] Setting to START frame (seekTime: 0)');
           setVideoPlaybackState({
-            paused: false,
+            paused: true,
             shouldSeek: true,
             seekTime: 0,
           });
-        }
-        break;
+          break;
 
-      case 'miniRest':
-        // Проигрываем вторую половину видео (реверс, с 2 до 4 сек)
-        if (timer.currentTime === 3) {
+        case 'exercise':
+          // Показываем КОНЕЧНОЕ положение (последний кадр, 2 сек)
+          console.log('[VIDEO SYNC] Setting to END frame (seekTime: 2)');
           setVideoPlaybackState({
-            paused: false,
+            paused: true,
             shouldSeek: true,
-            seekTime: 2, // Начинаем со 2 секунды
+            seekTime: 2,
           });
-        }
-        break;
+          break;
+
+        case 'miniRest':
+          // Возврат к первому кадру
+          console.log('[VIDEO SYNC] Setting to START frame (seekTime: 0)');
+          setVideoPlaybackState({
+            paused: true,
+            shouldSeek: true,
+            seekTime: 0,
+          });
+          break;
+      }
+    } else {
+      // Для динамических hold упражнений (curl_up, side_plank и т.д.) - старая логика с анимацией 2+2 сек
+      switch (timer.phase) {
+        case 'prepare':
+        case 'rest':
+        case 'completed':
+        case 'schemeCompleted':
+          // Показываем первый кадр
+          setVideoPlaybackState({
+            paused: true,
+            shouldSeek: true,
+            seekTime: 0,
+          });
+          break;
+
+        case 'exercise':
+          // Проигрываем видео вперед в начале фазы (первые 2 секунды)
+          if (timer.currentTime === holdTime) {
+            setVideoPlaybackState({
+              paused: false,
+              shouldSeek: true,
+              seekTime: 0,
+            });
+          }
+          break;
+
+        case 'miniRest':
+          // Проигрываем вторую половину видео (реверс, с 2 до 4 сек)
+          if (timer.currentTime === 3) {
+            setVideoPlaybackState({
+              paused: false,
+              shouldSeek: true,
+              seekTime: 2, // Начинаем со 2 секунды
+            });
+          }
+          break;
+      }
     }
-  }, [timer.phase, timer.currentTime, exerciseType, settings]);
+  }, [timer.phase, timer.currentTime, exerciseType, executionType, exerciseSettings, settings, currentExerciseId]);
 
   // Функции для сохранения промежуточного состояния упражнений
   const saveExerciseProgress = async (progress: Partial<ExerciseProgress>) => {
@@ -559,6 +632,110 @@ const ExerciseExecutionScreen: React.FC = () => {
       return;
     }
 
+    // DYNAMIC логика
+    if (executionType === 'dynamic' && exerciseSettings) {
+      const dynamicReps = exerciseSettings.dynamicReps || 10;
+      const dynamicSets = exerciseSettings.dynamicSets || 2;
+      const restTime = exerciseSettings.restTime || 15;
+      // Примерно 3 секунды на одно повторение
+      const exerciseDuration = dynamicReps * 3;
+
+      if (timer.phase === 'prepare') {
+        // Переход от подготовки к упражнению
+        playSound('start');
+        setTimer(prev => ({
+          ...prev,
+          currentTime: exerciseDuration,
+          phase: 'exercise',
+          instruction: getInstructions(currentExerciseId).start,
+          holdSoundPlayed: false,
+        }));
+      } else if (timer.phase === 'exercise') {
+        // Упражнение завершено
+        const isLastSet = timer.currentSet >= dynamicSets;
+
+        if (isLastSet) {
+          // Все подходы завершены
+          playSound('completed');
+          setTimer(prev => ({
+            ...prev,
+            isRunning: false,
+            phase: 'completed',
+            currentTime: 0,
+            instruction: getInstructions(currentExerciseId).completed,
+          }));
+
+          // Сохранение прогресса
+          try {
+            const today = new Date().toISOString().split('T')[0];
+            const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+            
+            if (savedExercises) {
+              const exercises = JSON.parse(savedExercises);
+              const updatedExercises = exercises.map((ex: any) =>
+                ex.id === exerciseType ? { ...ex, completed: true } : ex
+              );
+              await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
+            }
+            
+            // Сохранение выполненного упражнения в историю
+            const completedExercise: CompletedExercise = {
+              exerciseId: exerciseType,
+              exerciseName: exerciseName,
+              completedAt: new Date().toISOString(),
+              holdTime: 0,
+              repsSchema: [],
+              restTime: restTime,
+              totalSets: dynamicSets,
+            };
+            await saveDayExercise(completedExercise);
+          } catch (error) {
+            console.error('Error saving progress:', error);
+          }
+
+          await clearExerciseProgress();
+          setButtonState('completed');
+          setTimeout(() => navigation.goBack(), 2000);
+        } else {
+          // Переход к отдыху между подходами
+          playSound('rest');
+          setTimer(prev => ({
+            ...prev,
+            currentTime: restTime,
+            phase: 'rest',
+            instruction: getInstructions(currentExerciseId).rest,
+          }));
+          
+          // Сохраняем выполненный подход в историю
+          try {
+            const completedExercise: CompletedExercise = {
+              exerciseId: exerciseType,
+              exerciseName: exerciseName,
+              completedAt: new Date().toISOString(),
+              holdTime: 0,
+              repsSchema: [],
+              restTime: restTime,
+              totalSets: 1,
+            };
+            await saveDayExercise(completedExercise);
+          } catch (error) {
+            console.error('Error saving completed set:', error);
+          }
+        }
+      } else if (timer.phase === 'rest') {
+        // Отдых завершен, переход к следующему подходу
+        playSound('prepare');
+        setTimer(prev => ({
+          ...prev,
+          currentTime: 5,
+          phase: 'prepare',
+          currentSet: prev.currentSet + 1,
+          instruction: getInstructions(currentExerciseId).prepare,
+        }));
+      }
+      return;
+    }
+
     // Для ходьбы - простая логика (старая)
     if (exerciseType === 'walk') {
       playSound('completed'); // Проигрываем complete.mp3
@@ -606,9 +783,9 @@ const ExerciseExecutionScreen: React.FC = () => {
     }
 
     // Для остальных упражнений - новая логика
-    const repsSchema = settings?.exerciseSettings.repsSchema || [3, 2, 1];
-    const holdTime = settings?.exerciseSettings.holdTime || 7;
-    const restTime = settings?.exerciseSettings.restTime || 15;
+    const repsSchema = exerciseSettings?.repsSchema || settings?.exerciseSettings.repsSchema || [3, 2, 1];
+    const holdTime = exerciseSettings?.holdTime || settings?.exerciseSettings.holdTime || 7;
+    const restTime = exerciseSettings?.restTime || settings?.exerciseSettings.restTime || 15;
 
     if (timer.phase === 'prepare') {
       // Переход от подготовки к упражнению
@@ -653,9 +830,9 @@ const ExerciseExecutionScreen: React.FC = () => {
               exerciseId: exerciseType,
               exerciseName: `${exerciseName} (схема 1)`,
               completedAt: new Date().toISOString(),
-              holdTime: settings.exerciseSettings.holdTime,
-              repsSchema: settings.exerciseSettings.repsSchema,
-              restTime: settings.exerciseSettings.restTime,
+              holdTime: exerciseSettings?.holdTime || settings.exerciseSettings.holdTime,
+              repsSchema: exerciseSettings?.repsSchema || settings.exerciseSettings.repsSchema,
+              restTime: exerciseSettings?.restTime || settings.exerciseSettings.restTime,
               totalSets: repsSchema.length, // Все подходы первой схемы
             };
             await saveDayExercise(completedExercise);
@@ -697,8 +874,8 @@ const ExerciseExecutionScreen: React.FC = () => {
             
             // Сохранение выполненного упражнения в историю
             const totalSets = exerciseType === 'bird_dog' 
-              ? settings.exerciseSettings.repsSchema.length // Для bird_dog - только вторая схема
-              : settings.exerciseSettings.repsSchema.length;
+              ? (exerciseSettings?.repsSchema || settings.exerciseSettings.repsSchema).length // Для bird_dog - только вторая схема
+              : (exerciseSettings?.repsSchema || settings.exerciseSettings.repsSchema).length;
             
             const completedExerciseName = exerciseType === 'bird_dog'
               ? `${exerciseName} (схема 2)`
@@ -708,9 +885,9 @@ const ExerciseExecutionScreen: React.FC = () => {
               exerciseId: exerciseType,
               exerciseName: completedExerciseName,
               completedAt: new Date().toISOString(),
-              holdTime: settings.exerciseSettings.holdTime,
-              repsSchema: settings.exerciseSettings.repsSchema,
-              restTime: settings.exerciseSettings.restTime,
+              holdTime: exerciseSettings?.holdTime || settings.exerciseSettings.holdTime,
+              repsSchema: exerciseSettings?.repsSchema || settings.exerciseSettings.repsSchema,
+              restTime: exerciseSettings?.restTime || settings.exerciseSettings.restTime,
               totalSets: totalSets,
             };
             await saveDayExercise(completedExercise);
@@ -740,9 +917,9 @@ const ExerciseExecutionScreen: React.FC = () => {
             exerciseId: exerciseType,
             exerciseName: exerciseName,
             completedAt: new Date().toISOString(),
-            holdTime: settings.exerciseSettings.holdTime,
-            repsSchema: settings.exerciseSettings.repsSchema,
-            restTime: settings.exerciseSettings.restTime,
+            holdTime: exerciseSettings?.holdTime || settings.exerciseSettings.holdTime,
+            repsSchema: exerciseSettings?.repsSchema || settings.exerciseSettings.repsSchema,
+            restTime: exerciseSettings?.restTime || settings.exerciseSettings.restTime,
             totalSets: 1, // Один подход завершён
           };
           await saveDayExercise(completedExercise);
@@ -834,6 +1011,24 @@ const ExerciseExecutionScreen: React.FC = () => {
       return;
     }
 
+    // DYNAMIC: используем dynamicReps и dynamicSets из extendedData
+    if (executionType === 'dynamic' && exerciseSettings) {
+      playSound('prepare');
+      setTimer({
+        currentTime: 5, // Подготовка 5 секунд
+        isRunning: true,
+        phase: 'prepare',
+        currentSet: 1,
+        currentRep: 1,
+        currentSession: 1,
+        instruction: getInstructions(currentExerciseId).prepare,
+        holdSoundPlayed: false,
+        currentScheme: 1,
+        schemeOneCompleted: false,
+      });
+      return;
+    }
+
     if (exerciseType === 'walk') {
       // Для ходьбы оставляем старую простую логику
       const walkDurationInSeconds = settings.walkSettings.duration * 60;
@@ -889,7 +1084,7 @@ const ExerciseExecutionScreen: React.FC = () => {
         currentSet: 1,
         currentRep: 1,
         currentSession: 1,
-        instruction: getInstructions(exerciseType).prepare,
+        instruction: getInstructions(currentExerciseId).prepare,
         holdSoundPlayed: false,
         currentScheme: 1,
         schemeOneCompleted: false,
@@ -905,13 +1100,25 @@ const ExerciseExecutionScreen: React.FC = () => {
 
   // Обработчики для видео
   const handleVideoLoad = (data: any) => {
-    if (exerciseType === 'walk') return;
+    // Только для hold/reps упражнений (не для walk, dynamic, foam_rolling)
+    if (exerciseType === 'walk' || executionType === 'dynamic' || executionType === 'foam_rolling') {
+      console.log('Video loaded for', executionType, 'exercise, duration:', data.duration);
+      return;
+    }
+    
     setVideoDuration(data.duration);
     console.log('Video loaded, duration:', data.duration);
   };
 
   const handleVideoProgress = (data: any) => {
-    if (exerciseType === 'walk') return;
+    // Только для hold/reps упражнений (не для walk, dynamic, foam_rolling)
+    if (exerciseType === 'walk' || executionType === 'dynamic' || executionType === 'foam_rolling') return;
+    
+    const holdTime = exerciseSettings?.holdTime || settings?.exerciseSettings.holdTime || 7;
+    const isStaticPose = holdTime >= 20;
+    
+    // Для статичных поз не нужна остановка на 2 секунде
+    if (isStaticPose) return;
     
     const currentTime = data.currentTime;
     
@@ -927,7 +1134,8 @@ const ExerciseExecutionScreen: React.FC = () => {
   };
 
   const handleVideoEnd = () => {
-    if (exerciseType === 'walk') return;
+    // Только для hold/reps упражнений (не для walk, dynamic, foam_rolling)
+    if (exerciseType === 'walk' || executionType === 'dynamic' || executionType === 'foam_rolling') return;
     
     // Видео закончилось (дошло до 4 сек) - это конец miniRest
     // Возвращаемся на первый кадр
@@ -942,13 +1150,14 @@ const ExerciseExecutionScreen: React.FC = () => {
 
   // Выполнение seek когда нужно
   useEffect(() => {
-    if (exerciseType === 'walk') return;
+    // Только для hold/reps упражнений (не для walk, dynamic, foam_rolling)
+    if (exerciseType === 'walk' || executionType === 'dynamic' || executionType === 'foam_rolling') return;
     
     if (videoPlaybackState.shouldSeek && videoRef.current) {
       videoRef.current.seek(videoPlaybackState.seekTime);
       setVideoPlaybackState(prev => ({ ...prev, shouldSeek: false }));
     }
-  }, [videoPlaybackState.shouldSeek, videoPlaybackState.seekTime, exerciseType]);
+  }, [videoPlaybackState.shouldSeek, videoPlaybackState.seekTime, exerciseType, executionType]);
 
   if (!settings || isLoadingVideo) {
     return (
@@ -970,7 +1179,7 @@ const ExerciseExecutionScreen: React.FC = () => {
           source={videoSource}
           style={styles.backgroundGif}
           resizeMode="contain"
-          repeat={exerciseType === 'walk'}
+          repeat={exerciseType === 'walk' || executionType === 'dynamic' || executionType === 'foam_rolling'}
           muted={true}
           paused={exerciseType === 'walk' ? false : videoPlaybackState.paused}
           poster=""
@@ -1128,6 +1337,31 @@ const ExerciseExecutionScreen: React.FC = () => {
                     </View>
                   ))}
                 </View>
+              ) : executionType === 'dynamic' && exerciseSettings ? (
+                <View style={styles.setsProgress}>
+                  {Array.from({ length: exerciseSettings.dynamicSets || 2 }, (_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.setCircle,
+                        {
+                          backgroundColor: 
+                            (index < timer.currentSet - 1) || 
+                            timer.phase === 'completed'
+                              ? COLORS.PRIMARY_ACCENT
+                              : (index === timer.currentSet - 1 && timer.isRunning)
+                              ? COLORS.PRIMARY_ACCENT
+                              : COLORS.WHITE,
+                          borderColor: COLORS.PRIMARY_ACCENT,
+                        },
+                      ]}>
+                      {((index < timer.currentSet - 1) || 
+                        timer.phase === 'completed') && (
+                        <Text style={styles.checkmark}>✓</Text>
+                      )}
+                    </View>
+                  ))}
+                </View>
               ) : exerciseType === 'bird_dog' ? (
                 <View>
                   {/* Первая схема: левая рука + правая нога */}
@@ -1249,6 +1483,27 @@ const ExerciseExecutionScreen: React.FC = () => {
                   <Text style={styles.parameterLabel}>Отдых</Text>
                   <Text style={styles.parameterValue}>
                     {exerciseSettings.restTime || 30} сек
+                  </Text>
+                </View>
+              </>
+            ) : executionType === 'dynamic' && exerciseSettings ? (
+              <>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Повторений в подходе</Text>
+                  <Text style={styles.parameterValue}>
+                    {exerciseSettings.dynamicReps || 10}
+                  </Text>
+                </View>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Количество подходов</Text>
+                  <Text style={styles.parameterValue}>
+                    {exerciseSettings.dynamicSets || 2}
+                  </Text>
+                </View>
+                <View style={styles.parameter}>
+                  <Text style={styles.parameterLabel}>Отдых</Text>
+                  <Text style={styles.parameterValue}>
+                    {exerciseSettings.restTime || 15} сек
                   </Text>
                 </View>
               </>

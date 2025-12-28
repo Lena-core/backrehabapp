@@ -99,6 +99,18 @@ export const getCustomPrograms = async (): Promise<TrainingProgram[]> => {
  */
 export const getActiveProgram = async (): Promise<TrainingProgram | null> => {
   try {
+    // ВРЕМЕННО ДЛЯ ТЕСТИРОВАНИЯ: Используем "recovery_massage" для теста foam_rolling
+    const TEST_PROGRAM_ID = 'recovery_massage'; // Измени это значение для теста разных программ
+    // Варианты:
+    // 'recovery_massage' - foam_rolling (прокатки) + dynamic (koshka)
+    // 'acute_pain' - dynamic (koshka)
+    // 'advanced' - dynamic (bear_walk)
+    // 'basic_adaptive' - базовые упражнения
+    
+    await setActiveProgram(TEST_PROGRAM_ID);
+    return await getProgramById(TEST_PROGRAM_ID);
+    
+    /* КОММЕНТИРУЙ ЭТОТ БЛОК ПОСЛЕ ТЕСТИРОВАНИЯ:
     const userSettings = await AsyncStorage.getItem(USER_SETTINGS_KEY);
     if (!userSettings) {
       // Если нет настроек - устанавливаем базовую адаптивную программу по умолчанию
@@ -116,6 +128,7 @@ export const getActiveProgram = async (): Promise<TrainingProgram | null> => {
     }
     
     return await getProgramById(activeProgramId);
+    */
   } catch (error) {
     console.error('Error getting active program:', error);
     return null;
