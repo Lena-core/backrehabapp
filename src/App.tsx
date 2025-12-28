@@ -14,6 +14,8 @@ import DiaryScreen from './screens/DiaryScreen';
 import SettingsStackNavigator from './navigation/SettingsStackNavigator';
 import OnboardingNavigator from './navigation/OnboardingNavigator';
 import ProgramSelectionScreen from './screens/ProgramSelectionScreen';
+import ProgramExerciseSettingsScreen from './screens/ProgramExerciseSettingsScreen';
+import RehabSystemTestScreen from './screens/RehabSystemTestScreen';
 
 // Импорт типов
 import { RootStackParamList, TabParamList } from './types';
@@ -210,6 +212,20 @@ function AppNavigator(): JSX.Element {
       <Stack.Screen 
         name="ProgramSelection" 
         component={ProgramSelectionScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen 
+        name="ProgramExerciseSettings" 
+        component={ProgramExerciseSettingsScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen 
+        name="RehabSystemTest" 
+        component={RehabSystemTestScreen}
         options={{
           headerShown: false,
         }}

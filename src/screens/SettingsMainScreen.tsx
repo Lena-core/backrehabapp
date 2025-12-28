@@ -31,6 +31,14 @@ interface SettingsMenuItem {
 
 const settingsMenuItems: SettingsMenuItem[] = [
   {
+    id: 'rehab-test',
+    title: '🧪 Тест системы реабилитации',
+    description: 'Проверка новой системы прогресса',
+    screen: 'RehabSystemTest',
+    icon: '🧪',
+    isRootScreen: true,
+  },
+  {
     id: 'programs',
     title: 'Выбор программы',
     description: 'Выберите программу тренировок',
@@ -39,9 +47,17 @@ const settingsMenuItems: SettingsMenuItem[] = [
     isRootScreen: true,
   },
   {
+    id: 'program-exercises',
+    title: 'Настройки упражнений программы',
+    description: 'Измените настройки каждого упражнения',
+    screen: 'ProgramExerciseSettings',
+    icon: '⚙️',
+    isRootScreen: true,
+  },
+  {
     id: 'exercises',
-    title: 'Упражнения',
-    description: 'Настройка параметров упражнений и ходьбы',
+    title: 'Настройки по умолчанию',
+    description: 'Глобальные параметры для всех упражнений',
     screen: 'ExerciseSettings',
     icon: '🏃‍♀️',
   },

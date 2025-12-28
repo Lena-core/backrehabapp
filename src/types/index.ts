@@ -120,12 +120,14 @@ export type RootStackParamList = {
   DayPlan: undefined;
   Settings: undefined;
   ProgramSelection: undefined;
+  ProgramExerciseSettings: undefined;
   ExerciseExecution: {
     exerciseType: string; // Изменено с ExerciseType на string
     exerciseName: string;
   };
   Main: undefined;
   TestingInfrastructure: undefined;
+  RehabSystemTest: undefined;
 };
 
 export type TabParamList = {
@@ -367,4 +369,100 @@ export interface ExtendedUserSettings {
   activeProgramId: string;             // ID активной программы
   progressionEnabled: boolean;         // Включена ли система прогрессии
   autoProgressionEnabled: boolean;     // Автоматическая прогрессия или по запросу
+}
+
+// ========== СИСТЕМА РЕАБИЛИТАЦИОННЫХ ПРОГРАММ ==========
+
+// Фаза реабилитации
+export type RehabPhase = 'acute' | 'start' | 'consolidation' | 'maintenance';
+
+// Настройки для конкретной недели программы
+export interface WeeklyProgression {
+  week: number;                        // Номер недели (1, 2, 3...)
+  repsSchema: number[];                // Схема повторений [3,2,1] или [4,3,2]
+  holdTime?: number;                   // Время удержания (для hold/reps)
+  restTime?: number;                   // Время отдыха
+  dynamicReps?: number;                // Количество повторений (для dynamic)
+  dynamicSets?: number;                // Количество подходов (для dynamic)
+  rollingDuration?: number;            // Длительность прокатки (для foam_rolling)
+  rollingSessions?: number;            // Количество сессий (для foam_rolling)
+  walkDuration?: number;               // Длительность ходьбы
+  walkSessions?: number;               // Количество сессий ходьбы
+}
+
+// Программа реабилитации с weekly progression
+export interface RehabProgram {
+  id: string;
+  nameRu: string;
+  nameEn: string;
+  description: string;
+  phase: RehabPhase;                   // Фаза реабилитации
+  icon: string;                        // Эмодзи иконка
+  
+  // Длительность программы
+  durationDays: number;                // Количество дней (14, 60, 60, -1 для unlimited)
+  
+  // План прогрессии по неделям
+  weeklyProgression: WeeklyProgression[];
+  
+  // Упражнения программы (базовые настройки)
+  exercises: ProgramExercise[];
+  
+  // Адаптация по уровню боли
+  adaptToPainLevel: boolean;
+  painLevelRules?: {
+    [key: string]: string[];           // '1': ['curl_up', 'walk'], '3-4': ['walk']
+  };
+  
+  // Следующая программа после завершения
+  nextProgramId?: string;
+  
+  // Условие перехода на следующую программу
+  transitionCondition?: {
+    type: 'days_completed' | 'manual';  // Автоматически или вручную
+    requiredDays?: number;              // Минимум дней для автоперехода
+  };
+  
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Прогресс пользователя в программе
+export interface UserProgress {
+  currentProgramId: string;            // ID текущей программы
+  programStartDate: string;            // Дата начала программы (ISO)
+  daysCompleted: number;               // Количество выполненных дней
+  currentWeek: number;                 // Текущая неделя (1, 2, 3...)
+  
+  // Ручные изменения пользователя (отключают auto-прогрессию для упражнения)
+  manualOverrides: {
+    [exerciseId: string]: ExtendedExerciseSettings;
+  };
+  
+  // История прогрессии (когда пользователь принял/отклонил увеличение)
+  progressionHistory: {
+    date: string;                      // ISO date
+    week: number;                      // Неделя прогрессии
+    accepted: boolean;                 // Принял ли увеличение
+    previousSettings?: WeeklyProgression;
+    newSettings?: WeeklyProgression;
+  }[];
+  
+  // Пропущенные дни (для расчета streak)
+  missedDays: string[];                // ISO dates
+  
+  // Серия выполнения
+  currentStreak: number;               // Дней подряд
+  longestStreak: number;               // Максимальная серия
+  
+  // Последний показанный popup прогрессии
+  lastProgressionPopupDate?: string;   // ISO date
+}
+
+// Popup предложения увеличения нагрузки
+export interface ProgressionOffer {
+  week: number;
+  currentSettings: WeeklyProgression;
+  newSettings: WeeklyProgression;
+  affectedExercises: string[];         // IDs упражнений, которые затронуты
 }

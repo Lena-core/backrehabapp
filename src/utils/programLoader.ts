@@ -226,6 +226,11 @@ export const updateExerciseSettings = async (
 };
 
 /**
+ * Обертка для updateExerciseSettings (для совместимости)
+ */
+export const updateProgramExerciseSettings = updateExerciseSettings;
+
+/**
  * Включить/выключить упражнение в программе
  */
 export const toggleExerciseInProgram = async (

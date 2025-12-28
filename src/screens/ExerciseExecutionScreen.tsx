@@ -1502,13 +1502,13 @@ const ExerciseExecutionScreen: React.FC = () => {
                 <View style={styles.parameter}>
                   <Text style={styles.parameterLabel}>Длительность сессии</Text>
                   <Text style={styles.parameterValue}>
-                    {settings.walkSettings.duration} мин
+                    {exerciseSettings?.walkDuration || settings.walkSettings.duration} мин
                   </Text>
                 </View>
                 <View style={styles.parameter}>
                   <Text style={styles.parameterLabel}>Количество сессий</Text>
                   <Text style={styles.parameterValue}>
-                    {settings.walkSettings.sessions}
+                    {exerciseSettings?.walkSessions || settings.walkSettings.sessions}
                   </Text>
                 </View>
               </>
@@ -1517,19 +1517,19 @@ const ExerciseExecutionScreen: React.FC = () => {
                 <View style={styles.parameter}>
                   <Text style={styles.parameterLabel}>Время удержания</Text>
                   <Text style={styles.parameterValue}>
-                    {settings.exerciseSettings.holdTime} сек
+                    {exerciseSettings?.holdTime || settings.exerciseSettings.holdTime} сек
                   </Text>
                 </View>
                 <View style={styles.parameter}>
                   <Text style={styles.parameterLabel}>Схема</Text>
                   <Text style={styles.parameterValue}>
-                    {settings.exerciseSettings.repsSchema.join('-')}
+                    {(exerciseSettings?.repsSchema || settings.exerciseSettings.repsSchema).join('-')}
                   </Text>
                 </View>
                 <View style={styles.parameter}>
                   <Text style={styles.parameterLabel}>Отдых</Text>
                   <Text style={styles.parameterValue}>
-                    {settings.exerciseSettings.restTime} сек
+                    {exerciseSettings?.restTime || settings.exerciseSettings.restTime} сек
                   </Text>
                 </View>
               </>

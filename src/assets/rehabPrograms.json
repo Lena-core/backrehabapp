@@ -1,0 +1,415 @@
+{
+  "version": "2.0.0",
+  "programs": [
+    {
+      "id": "acute_pain_remediation",
+      "nameRu": "Ремедиация острой боли",
+      "nameEn": "Acute Pain Remediation",
+      "description": "Специальная программа для снятия острой боли в спине. Выполняйте упражнения осторожно, прислушивайтесь к своим ощущениям.",
+      "phase": "acute",
+      "icon": "🏥",
+      "durationDays": 14,
+      "weeklyProgression": [
+        {
+          "week": 1,
+          "repsSchema": [3, 2, 1],
+          "holdTime": 30,
+          "restTime": 30,
+          "walkDuration": 3,
+          "walkSessions": 5
+        },
+        {
+          "week": 2,
+          "repsSchema": [3, 2, 1],
+          "holdTime": 30,
+          "restTime": 20,
+          "walkDuration": 5,
+          "walkSessions": 5
+        }
+      ],
+      "exercises": [
+        {
+          "exerciseId": "posa_rebenka",
+          "order": 1,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 30,
+            "repsSchema": [3, 2, 1],
+            "restTime": 30
+          }
+        },
+        {
+          "exerciseId": "koshka",
+          "order": 2,
+          "isEnabled": true,
+          "settings": {
+            "dynamicReps": 10,
+            "dynamicSets": 2,
+            "restTime": 20
+          }
+        },
+        {
+          "exerciseId": "walk",
+          "order": 3,
+          "isEnabled": true,
+          "settings": {
+            "walkDuration": 3,
+            "walkSessions": 5
+          }
+        }
+      ],
+      "adaptToPainLevel": false,
+      "nextProgramId": "rehabilitation_start",
+      "transitionCondition": {
+        "type": "manual",
+        "requiredDays": 7
+      }
+    },
+    {
+      "id": "rehabilitation_start",
+      "nameRu": "Начало реабилитации",
+      "nameEn": "Rehabilitation Start",
+      "description": "Базовая программа для начала восстановления. Упражнения 'большой тройки' помогут укрепить мышцы спины и снизить риск рецидивов.",
+      "phase": "start",
+      "icon": "🌱",
+      "durationDays": 60,
+      "weeklyProgression": [
+        {
+          "week": 1,
+          "repsSchema": [3, 2, 1],
+          "holdTime": 7,
+          "restTime": 20
+        },
+        {
+          "week": 2,
+          "repsSchema": [4, 3, 2],
+          "holdTime": 7,
+          "restTime": 20
+        },
+        {
+          "week": 3,
+          "repsSchema": [5, 3, 2],
+          "holdTime": 7,
+          "restTime": 15
+        },
+        {
+          "week": 4,
+          "repsSchema": [5, 4, 2],
+          "holdTime": 7,
+          "restTime": 15
+        },
+        {
+          "week": 5,
+          "repsSchema": [6, 4, 2],
+          "holdTime": 7,
+          "restTime": 15
+        },
+        {
+          "week": 6,
+          "repsSchema": [6, 5, 3],
+          "holdTime": 8,
+          "restTime": 15
+        },
+        {
+          "week": 7,
+          "repsSchema": [7, 5, 3],
+          "holdTime": 8,
+          "restTime": 15
+        },
+        {
+          "week": 8,
+          "repsSchema": [8, 6, 4],
+          "holdTime": 8,
+          "restTime": 12
+        },
+        {
+          "week": 9,
+          "repsSchema": [8, 6, 4],
+          "holdTime": 9,
+          "restTime": 12
+        }
+      ],
+      "exercises": [
+        {
+          "exerciseId": "curl_up",
+          "order": 1,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 7,
+            "repsSchema": [3, 2, 1],
+            "restTime": 20
+          }
+        },
+        {
+          "exerciseId": "side_plank",
+          "order": 2,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 7,
+            "repsSchema": [3, 2, 1],
+            "restTime": 20
+          }
+        },
+        {
+          "exerciseId": "bird_dog",
+          "order": 3,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 7,
+            "repsSchema": [3, 2, 1],
+            "restTime": 20
+          }
+        },
+        {
+          "exerciseId": "walk",
+          "order": 4,
+          "isEnabled": true,
+          "settings": {
+            "walkDuration": 5,
+            "walkSessions": 3
+          }
+        }
+      ],
+      "adaptToPainLevel": true,
+      "painLevelRules": {
+        "1": ["curl_up", "side_plank", "bird_dog", "walk"],
+        "2": ["curl_up", "side_plank", "bird_dog", "walk"],
+        "3": ["curl_up", "bird_dog", "walk"],
+        "4": ["curl_up", "walk"],
+        "5": ["walk"]
+      },
+      "nextProgramId": "rehabilitation_consolidation",
+      "transitionCondition": {
+        "type": "days_completed",
+        "requiredDays": 60
+      }
+    },
+    {
+      "id": "rehabilitation_consolidation",
+      "nameRu": "Закрепление результата",
+      "nameEn": "Consolidation",
+      "description": "Программа для закрепления достигнутых результатов. Увеличенная нагрузка и новые упражнения помогут усилить эффект реабилитации.",
+      "phase": "consolidation",
+      "icon": "💪",
+      "durationDays": 60,
+      "weeklyProgression": [
+        {
+          "week": 1,
+          "repsSchema": [8, 6, 4],
+          "holdTime": 9,
+          "restTime": 12
+        },
+        {
+          "week": 2,
+          "repsSchema": [9, 7, 5],
+          "holdTime": 9,
+          "restTime": 12
+        },
+        {
+          "week": 3,
+          "repsSchema": [10, 8, 5],
+          "holdTime": 9,
+          "restTime": 10
+        },
+        {
+          "week": 4,
+          "repsSchema": [10, 8, 6],
+          "holdTime": 10,
+          "restTime": 10
+        },
+        {
+          "week": 5,
+          "repsSchema": [11, 9, 6],
+          "holdTime": 10,
+          "restTime": 10
+        },
+        {
+          "week": 6,
+          "repsSchema": [12, 10, 7],
+          "holdTime": 10,
+          "restTime": 10
+        },
+        {
+          "week": 7,
+          "repsSchema": [12, 10, 8],
+          "holdTime": 10,
+          "restTime": 10
+        },
+        {
+          "week": 8,
+          "repsSchema": [13, 11, 8],
+          "holdTime": 10,
+          "restTime": 10
+        },
+        {
+          "week": 9,
+          "repsSchema": [14, 12, 9],
+          "holdTime": 10,
+          "restTime": 10
+        }
+      ],
+      "exercises": [
+        {
+          "exerciseId": "curl_up",
+          "order": 1,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 9,
+            "repsSchema": [8, 6, 4],
+            "restTime": 12
+          }
+        },
+        {
+          "exerciseId": "side_plank_lvl2",
+          "order": 2,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 9,
+            "repsSchema": [8, 6, 4],
+            "restTime": 12
+          }
+        },
+        {
+          "exerciseId": "bird_dog",
+          "order": 3,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 9,
+            "repsSchema": [8, 6, 4],
+            "restTime": 12
+          }
+        },
+        {
+          "exerciseId": "dead_bug",
+          "order": 4,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 9,
+            "repsSchema": [8, 6, 4],
+            "restTime": 12
+          }
+        },
+        {
+          "exerciseId": "walk",
+          "order": 5,
+          "isEnabled": true,
+          "settings": {
+            "walkDuration": 10,
+            "walkSessions": 2
+          }
+        }
+      ],
+      "adaptToPainLevel": true,
+      "painLevelRules": {
+        "1": ["curl_up", "side_plank_lvl2", "bird_dog", "dead_bug", "walk"],
+        "2": ["curl_up", "side_plank_lvl2", "bird_dog", "walk"],
+        "3": ["curl_up", "bird_dog", "walk"],
+        "4": ["curl_up", "walk"],
+        "5": ["walk"]
+      },
+      "nextProgramId": "rehabilitation_maintenance",
+      "transitionCondition": {
+        "type": "days_completed",
+        "requiredDays": 60
+      }
+    },
+    {
+      "id": "rehabilitation_maintenance",
+      "nameRu": "Профилактика",
+      "nameEn": "Maintenance",
+      "description": "Программа для поддержания достигнутых результатов и профилактики рецидивов. Разнообразие упражнений и стабильная нагрузка.",
+      "phase": "maintenance",
+      "icon": "🎯",
+      "durationDays": -1,
+      "weeklyProgression": [
+        {
+          "week": 1,
+          "repsSchema": [14, 12, 9],
+          "holdTime": 10,
+          "restTime": 10
+        },
+        {
+          "week": 2,
+          "repsSchema": [15, 13, 10],
+          "holdTime": 10,
+          "restTime": 10
+        },
+        {
+          "week": 3,
+          "repsSchema": [15, 13, 10],
+          "holdTime": 10,
+          "restTime": 10
+        }
+      ],
+      "exercises": [
+        {
+          "exerciseId": "curl_up",
+          "order": 1,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 10,
+            "repsSchema": [14, 12, 9],
+            "restTime": 10
+          }
+        },
+        {
+          "exerciseId": "side_plank_lvl3",
+          "order": 2,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 10,
+            "repsSchema": [14, 12, 9],
+            "restTime": 10
+          }
+        },
+        {
+          "exerciseId": "bird_dog",
+          "order": 3,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 10,
+            "repsSchema": [14, 12, 9],
+            "restTime": 10
+          }
+        },
+        {
+          "exerciseId": "dead_bug",
+          "order": 4,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 10,
+            "repsSchema": [14, 12, 9],
+            "restTime": 10
+          }
+        },
+        {
+          "exerciseId": "pryamaya_planka",
+          "order": 5,
+          "isEnabled": true,
+          "settings": {
+            "holdTime": 30,
+            "repsSchema": [3, 2, 1],
+            "restTime": 20
+          }
+        },
+        {
+          "exerciseId": "walk",
+          "order": 6,
+          "isEnabled": true,
+          "settings": {
+            "walkDuration": 15,
+            "walkSessions": 2
+          }
+        }
+      ],
+      "adaptToPainLevel": true,
+      "painLevelRules": {
+        "1": ["curl_up", "side_plank_lvl3", "bird_dog", "dead_bug", "pryamaya_planka", "walk"],
+        "2": ["curl_up", "side_plank_lvl3", "bird_dog", "dead_bug", "walk"],
+        "3": ["curl_up", "bird_dog", "walk"],
+        "4": ["curl_up", "walk"],
+        "5": ["walk"]
+      }
+    }
+  ]
+}
