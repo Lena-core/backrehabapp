@@ -114,6 +114,7 @@ const DayPlanScreen: React.FC = () => {
 
   const loadDayPlan = useCallback(async () => {
     try {
+      console.log('[DayPlan] Loading day plan...');
       // Загружаем текущий уровень боли
       const today = new Date().toISOString().split('T')[0];
       const todayPainStatus = await AsyncStorage.getItem(`painStatus_${today}`);
@@ -134,7 +135,7 @@ const DayPlanScreen: React.FC = () => {
       const activeProgram = await getActiveProgram();
       
       if (!activeProgram) {
-        console.warn('No active program found, using fallback');
+        console.warn('[DayPlan] No active program found, using fallback');
         // Fallback: создаем старый план
         const fallbackExercises = createDayPlan(painLevel, settings);
         setExercises(fallbackExercises);
@@ -142,6 +143,7 @@ const DayPlanScreen: React.FC = () => {
         return;
       }
 
+      console.log(`[DayPlan] Active program: ${activeProgram.nameRu} (${activeProgram.id})`);
       setActiveProgramName(activeProgram.nameRu);
 
       // Преобразуем painLevel в число (1-5)
@@ -149,6 +151,7 @@ const DayPlanScreen: React.FC = () => {
 
       // Загружаем упражнения из программы (с учетом адаптации по боли)
       const programExercises = await getActiveProgramExercises(painLevelNumber);
+      console.log(`[DayPlan] Loaded ${programExercises.length} exercises from program`);
 
       // Загружаем сохраненные упражнения со статусом выполнения
       const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
@@ -170,11 +173,13 @@ const DayPlanScreen: React.FC = () => {
         completedExerciseIds
       );
 
+      console.log(`[DayPlan] Day plan loaded:`, dayExercises.map(ex => ex.name));
+
       // Сохраняем обновленный план
       await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(dayExercises));
       setExercises(dayExercises);
     } catch (error) {
-      console.error('Error loading day plan:', error);
+      console.error('[DayPlan] Error loading day plan:', error);
       // Fallback план
       setExercises(createDayPlan('none', settings));
       setActiveProgramName('Базовая программа');
@@ -221,20 +226,14 @@ const DayPlanScreen: React.FC = () => {
     }
   }, [settings, loadDayPlan]);
 
-  // Обновляем план при изменении настроек и возвращении на экран
+  // Обновляем план при возвращении на экран (например, после выбора новой программы)
   useFocusEffect(
     useCallback(() => {
       if (settings) {
-        refreshDayPlan();
+        loadDayPlan();
       }
-    }, [refreshDayPlan])
+    }, [settings, loadDayPlan])
   );
-
-  useEffect(() => {
-    if (settings) {
-      loadDayPlan();
-    }
-  }, [settings, loadDayPlan]);
 
   // Инициализация программ при первом запуске
   useEffect(() => {

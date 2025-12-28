@@ -13,6 +13,7 @@ import ExerciseExecutionScreen from './screens/ExerciseExecutionScreen';
 import DiaryScreen from './screens/DiaryScreen';
 import SettingsStackNavigator from './navigation/SettingsStackNavigator';
 import OnboardingNavigator from './navigation/OnboardingNavigator';
+import ProgramSelectionScreen from './screens/ProgramSelectionScreen';
 
 // Импорт типов
 import { RootStackParamList, TabParamList } from './types';
@@ -206,6 +207,13 @@ function AppNavigator(): JSX.Element {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={TabNavigator} />
+      <Stack.Screen 
+        name="ProgramSelection" 
+        component={ProgramSelectionScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
       <Stack.Screen 
         name="ExerciseExecution" 
         component={ExerciseExecutionScreen}

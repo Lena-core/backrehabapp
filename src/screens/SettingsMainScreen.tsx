@@ -9,22 +9,35 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { CompositeNavigationProp } from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
-import { SettingsStackParamList } from '../types';
+import { SettingsStackParamList, RootStackParamList } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
 import { useOnboarding } from '../contexts';
 
-type SettingsMainScreenNavigationProp = StackNavigationProp<SettingsStackParamList, 'SettingsMain'>;
+type SettingsMainScreenNavigationProp = CompositeNavigationProp<
+  StackNavigationProp<SettingsStackParamList, 'SettingsMain'>,
+  StackNavigationProp<RootStackParamList>
+>;
 
 interface SettingsMenuItem {
   id: string;
   title: string;
   description: string;
-  screen: keyof SettingsStackParamList;
+  screen: keyof SettingsStackParamList | keyof RootStackParamList;
   icon: string;
+  isRootScreen?: boolean;
 }
 
 const settingsMenuItems: SettingsMenuItem[] = [
+  {
+    id: 'programs',
+    title: 'Выбор программы',
+    description: 'Выберите программу тренировок',
+    screen: 'ProgramSelection',
+    icon: '📋',
+    isRootScreen: true,
+  },
   {
     id: 'exercises',
     title: 'Упражнения',
@@ -74,8 +87,14 @@ const SettingsMainScreen: React.FC = () => {
   const { resetOnboarding } = useOnboarding();
   const [isResetting, setIsResetting] = useState(false);
 
-  const handleMenuItemPress = (screen: keyof SettingsStackParamList) => {
-    navigation.navigate(screen);
+  const handleMenuItemPress = (item: SettingsMenuItem) => {
+    if (item.isRootScreen) {
+      // Навигация к экрану в основном стеке
+      navigation.navigate(item.screen as keyof RootStackParamList);
+    } else {
+      // Навигация внутри SettingsStack
+      navigation.navigate(item.screen as keyof SettingsStackParamList);
+    }
   };
 
   const handleResetOnboarding = () => {
@@ -115,7 +134,7 @@ const SettingsMainScreen: React.FC = () => {
             <TouchableOpacity
               key={item.id}
               style={styles.menuItem}
-              onPress={() => handleMenuItemPress(item.screen)}
+              onPress={() => handleMenuItemPress(item)}
               activeOpacity={0.7}
             >
               <View style={styles.menuItemContent}>

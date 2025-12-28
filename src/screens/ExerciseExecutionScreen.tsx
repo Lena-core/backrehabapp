@@ -352,13 +352,6 @@ const ExerciseExecutionScreen: React.FC = () => {
     
     // СТАТИЧНЫЕ ПОЗЫ (holdTime >= 20 сек): показываем конечное положение без анимации
     const isStaticPose = holdTime >= 20;
-    
-    console.log('[VIDEO SYNC]', {
-      exerciseId: currentExerciseId,
-      phase: timer.phase,
-      holdTime,
-      isStaticPose,
-    });
 
     if (isStaticPose) {
       // Для статичных поз (поза ребенка, планки и т.д.)
@@ -368,7 +361,6 @@ const ExerciseExecutionScreen: React.FC = () => {
         case 'completed':
         case 'schemeCompleted':
           // Показываем первый кадр
-          console.log('[VIDEO SYNC] Setting to START frame (seekTime: 0)');
           setVideoPlaybackState({
             paused: true,
             shouldSeek: true,
@@ -378,7 +370,6 @@ const ExerciseExecutionScreen: React.FC = () => {
 
         case 'exercise':
           // Показываем КОНЕЧНОЕ положение (последний кадр, 2 сек)
-          console.log('[VIDEO SYNC] Setting to END frame (seekTime: 2)');
           setVideoPlaybackState({
             paused: true,
             shouldSeek: true,
@@ -388,7 +379,6 @@ const ExerciseExecutionScreen: React.FC = () => {
 
         case 'miniRest':
           // Возврат к первому кадру
-          console.log('[VIDEO SYNC] Setting to START frame (seekTime: 0)');
           setVideoPlaybackState({
             paused: true,
             shouldSeek: true,

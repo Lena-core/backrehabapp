@@ -113,13 +113,19 @@ export type ExerciseButtonState = 'start' | 'continue' | 'completed';
 
 // Навигационные типы
 export type RootStackParamList = {
+  Home: undefined;
+  Onboarding: undefined;
+  PainLevelCheck: { source: 'home' | 'settings' };
   PainTracker: undefined;
   DayPlan: undefined;
+  Settings: undefined;
+  ProgramSelection: undefined;
   ExerciseExecution: {
     exerciseType: string; // Изменено с ExerciseType на string
     exerciseName: string;
   };
   Main: undefined;
+  TestingInfrastructure: undefined;
 };
 
 export type TabParamList = {
