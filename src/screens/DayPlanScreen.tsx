@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -54,6 +54,8 @@ const DayPlanScreen: React.FC = () => {
   const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
   const [showProgressionPopup, setShowProgressionPopup] = useState(false);
   const [showCompletionPopup, setShowCompletionPopup] = useState(false);
+  const [showDayCompletionMessage, setShowDayCompletionMessage] = useState(false);
+  const [dayAlreadyCompleted, setDayAlreadyCompleted] = useState(false);
 
   const loadDayPlan = useCallback(async () => {
     try {
@@ -203,6 +205,16 @@ const DayPlanScreen: React.FC = () => {
 
       await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(dayExercises));
       setExercises(dayExercises);
+      
+      // Проверяем был ли день уже завершен сегодня
+      const dayCompletedFlag = await AsyncStorage.getItem(`day_completed_${today}`);
+      setDayAlreadyCompleted(dayCompletedFlag === 'true');
+      
+      if (dayCompletedFlag === 'true') {
+        console.log('[DayPlan] ✅ Day already completed today');
+      } else {
+        console.log('[DayPlan] ℹ️ Day not yet completed');
+      }
     } catch (error) {
       console.error('[DayPlan] Error loading day plan:', error);
       setExercises(createDayPlan('none', settings));
@@ -217,6 +229,75 @@ const DayPlanScreen: React.FC = () => {
       }
     }, [settings, loadDayPlan])
   );
+
+  // Автоматическая проверка завершения дня
+  useEffect(() => {
+    const checkDayCompletion = async () => {
+      // Проверяем: есть ли упражнения, все ли завершены, и не был ли день уже отмечен
+      const hasExercises = exercises.length > 0;
+      const allCompleted = hasExercises && exercises.every(ex => ex.completed);
+      
+      if (allCompleted && !dayAlreadyCompleted) {
+        console.log('[DayPlan] 🎉 All exercises completed! Marking day as completed...');
+        await handleDayCompletion();
+      }
+    };
+    
+    checkDayCompletion();
+  }, [exercises, dayAlreadyCompleted]);
+
+  const handleDayCompletion = async () => {
+    try {
+      if (!rehabProgram || !userProgress) {
+        console.warn('[DayPlan] Cannot complete day: missing program or progress');
+        return;
+      }
+      
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Отмечаем день как завершенный
+      await UserProgressManager.markDayCompleted();
+      await AsyncStorage.setItem(`day_completed_${today}`, 'true');
+      setDayAlreadyCompleted(true);
+      
+      console.log('[DayPlan] ✅ Day marked as completed');
+      
+      // Показываем поздравление
+      setShowDayCompletionMessage(true);
+      
+      // Перезагружаем прогресс для обновления UI
+      const updatedProgress = await UserProgressManager.getProgress();
+      setUserProgress(updatedProgress);
+      
+      // Проверяем нужно ли показать popup прогрессии
+      const shouldShowProgression = await UserProgressManager.shouldShowProgressionPopup();
+      if (shouldShowProgression) {
+        console.log('[DayPlan] 📊 Should show progression popup');
+        // Задержка чтобы сначала показать поздравление
+        setTimeout(() => {
+          setShowDayCompletionMessage(false);
+          setShowProgressionPopup(true);
+        }, 2000);
+      } else {
+        // Автоматически скрываем через 3 секунды
+        setTimeout(() => {
+          setShowDayCompletionMessage(false);
+        }, 3000);
+      }
+      
+      // Проверяем завершение программы
+      if (updatedProgress && UserProgressManager.isProgramCompleted(rehabProgram, updatedProgress.daysCompleted)) {
+        if (rehabProgram.nextProgramId) {
+          console.log('[DayPlan] 🎆 Program completed!');
+          setTimeout(() => {
+            setShowCompletionPopup(true);
+          }, shouldShowProgression ? 4000 : 3000);
+        }
+      }
+    } catch (error) {
+      console.error('[DayPlan] Error completing day:', error);
+    }
+  };
 
   const createDayPlan = (painLevel: PainLevel, userSettings: UserSettings | null = null): Exercise[] => {
     const plan: Exercise[] = [];
@@ -565,6 +646,29 @@ const DayPlanScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Day Completion Message */}
+      <Modal
+        visible={showDayCompletionMessage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowDayCompletionMessage(false)}
+      >
+        <View style={styles.completionOverlay}>
+          <View style={styles.completionMessage}>
+            <Text style={styles.completionIcon}>🎉</Text>
+            <Text style={styles.completionTitle}>Поздравляем!</Text>
+            <Text style={styles.completionText}>
+              День выполнен
+            </Text>
+            {userProgress && (
+              <Text style={styles.completionStreakText}>
+                🔥 Серия: {userProgress.currentStreak} дней
+              </Text>
+            )}
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 };
@@ -852,6 +956,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.TEXT_PRIMARY,
     lineHeight: 20,
+  },
+  // Day Completion Message styles
+  completionOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  completionMessage: {
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 20,
+    padding: 40,
+    alignItems: 'center',
+    width: '80%',
+    maxWidth: 320,
+  },
+  completionIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  completionTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 12,
+  },
+  completionText: {
+    fontSize: 18,
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 16,
+  },
+  completionStreakText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.PRIMARY_ACCENT,
   },
 });
 
