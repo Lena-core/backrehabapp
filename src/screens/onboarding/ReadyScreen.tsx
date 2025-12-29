@@ -1,41 +1,32 @@
 // Финальный экран онбординга - Шаг 4/4
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
   Dimensions,
   Image,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 
 import { COLORS, GRADIENTS, READY_SCREEN } from '../../constants';
-import { useOnboarding } from '../../contexts';
+import { OnboardingStackParamList } from '../../types';
 import { CustomButton } from '../../components';
 
 const { width } = Dimensions.get('window');
 
+type ReadyScreenNavigationProp = StackNavigationProp<OnboardingStackParamList, 'Ready'>;
+
 const ReadyScreen: React.FC = () => {
-  const { completeOnboarding, onboardingData } = useOnboarding();
-  const [isCompleting, setIsCompleting] = useState(false);
+  const navigation = useNavigation<ReadyScreenNavigationProp>();
 
-  const handleStart = async () => {
-    if (!onboardingData) {
-      console.error('Cannot complete onboarding: no data available');
-      return;
-    }
-
-    try {
-      setIsCompleting(true);
-      await completeOnboarding();
-      // Навигация произойдет автоматически через изменение hasCompletedOnboarding
-    } catch (error) {
-      console.error('Error completing onboarding:', error);
-      setIsCompleting(false);
-    }
+  const handleStart = () => {
+    // Переходим к выбору программы
+    navigation.navigate('RehabProgramSelection');
   };
 
   return (
@@ -65,20 +56,13 @@ const ReadyScreen: React.FC = () => {
 
         {/* Кнопка старта */}
         <View style={styles.buttonContainer}>
-          {isCompleting ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={COLORS.CTA_BUTTON} />
-              <Text style={styles.loadingText}>Подготовка вашего плана...</Text>
-            </View>
-          ) : (
-            <CustomButton
-              title="Начать первую тренировку"
-              onPress={handleStart}
-              size="large"
-              variant="primary"
-              style={styles.startButton}
-            />
-          )}
+          <CustomButton
+            title="Начать первую тренировку"
+            onPress={handleStart}
+            size="large"
+            variant="primary"
+            style={styles.startButton}
+          />
         </View>
 
         {/* Декоративные элементы */}
@@ -138,16 +122,6 @@ const styles = StyleSheet.create({
   startButton: {
     width: '100%',
     paddingVertical: 18,
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: COLORS.TEXT_PRIMARY,
-    opacity: 0.7,
   },
   // Декоративные элементы
   decorativeCircle1: {

@@ -66,7 +66,18 @@ const RehabSystemTestScreen: React.FC = () => {
   const handleMarkDayCompleted = async () => {
     await UserProgressManager.markDayCompleted();
     await loadData();
-    Alert.alert('Успешно', 'День отмечен как выполненный!');
+    
+    // Проверяем, нужно ли показать подсказку о popup
+    const shouldShow = await UserProgressManager.shouldShowProgressionPopup();
+    
+    if (shouldShow) {
+      Alert.alert(
+        'День выполнен!',
+        '🎉 Вы завершили неделю! Вернитесь на главный экран ("План на день") чтобы увидеть popup прогрессии!'
+      );
+    } else {
+      Alert.alert('Успешно', 'День отмечен как выполненный!');
+    }
   };
 
   const handleAcceptProgression = async () => {
@@ -170,9 +181,15 @@ const RehabSystemTestScreen: React.FC = () => {
           <TouchableOpacity style={styles.button} onPress={handleMarkDayCompleted}>
             <Text style={styles.buttonText}>✓ Отметить день выполненным</Text>
           </TouchableOpacity>
+          
+          <View style={styles.infoBox}>
+            <Text style={styles.infoText}>
+              💡 Чтобы увидеть popup прогрессии: отметьте 7 дней подряд, затем вернитесь на главный экран ("План на день")
+            </Text>
+          </View>
 
           <TouchableOpacity style={styles.button} onPress={handleAcceptProgression}>
-            <Text style={styles.buttonText}>⬆️ Перейти на следующую неделю</Text>
+            <Text style={styles.buttonText}>⬆️ Перейти на следующую неделю (без popup)</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.button} onPress={handleRollback}>
@@ -362,6 +379,17 @@ const styles = StyleSheet.create({
   historyText: {
     fontSize: 14,
     color: COLORS.TEXT_PRIMARY,
+  },
+  infoBox: {
+    backgroundColor: COLORS.PRIMARY_ACCENT,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  infoText: {
+    fontSize: 13,
+    color: COLORS.TEXT_PRIMARY,
+    lineHeight: 18,
   },
 });
 

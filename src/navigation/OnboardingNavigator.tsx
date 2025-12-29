@@ -16,6 +16,7 @@ import PainApproachScreen from '../screens/onboarding/PainApproachScreen';
 import PainLevelScreen from '../screens/onboarding/PainLevelScreen';
 import ExercisePreviewScreen from '../screens/onboarding/ExercisePreviewScreen';
 import NotificationSetupScreen from '../screens/onboarding/NotificationSetupScreen';
+import RehabProgramOnboardingScreen from '../screens/RehabProgramOnboardingScreen';
 import ReadyScreen from '../screens/onboarding/ReadyScreen';
 
 const Stack = createStackNavigator<OnboardingStackParamList>();
@@ -92,6 +93,13 @@ const OnboardingNavigator: React.FC = () => {
       <Stack.Screen 
         name="NotificationSetup" 
         component={NotificationSetupScreen}
+        options={{
+          animationEnabled: true,
+        }}
+      />
+      <Stack.Screen 
+        name="RehabProgramSelection" 
+        component={RehabProgramOnboardingScreen}
         options={{
           animationEnabled: true,
         }}

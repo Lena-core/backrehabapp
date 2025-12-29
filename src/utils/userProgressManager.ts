@@ -90,9 +90,9 @@ export class UserProgressManager {
     // Убираем сегодняшний день из пропущенных (если был)
     progress.missedDays = progress.missedDays.filter(d => d !== today);
     
-    // Вычисляем текущую неделю
-    const daysSinceStart = progress.daysCompleted;
-    progress.currentWeek = Math.ceil(daysSinceStart / 7);
+    // НЕ переключаем неделю автоматически!
+    // Неделя переключается ТОЛЬКО через acceptProgression()
+    // Это позволяет показать popup прогрессии
     
     await this.saveProgress(progress);
     console.log(`[UserProgressManager] Day ${progress.daysCompleted} completed, week ${progress.currentWeek}, streak ${progress.currentStreak}`);
@@ -191,13 +191,17 @@ export class UserProgressManager {
     
     const today = new Date().toISOString().split('T')[0];
     
-    // Показываем popup только раз в неделю (каждые 7 дней)
-    const daysSinceLastPopup = progress.lastProgressionPopupDate
-      ? this.daysBetween(progress.lastProgressionPopupDate, today)
-      : 7;
+    // Не показываем попап если уже показывали сегодня
+    if (progress.lastProgressionPopupDate === today) {
+      return false;
+    }
     
-    // Показываем если прошло >= 7 дней и текущая неделя кратна 7
-    return daysSinceLastPopup >= 7 && progress.daysCompleted % 7 === 0 && progress.daysCompleted > 0;
+    // Показываем popup когда пользователь завершил ровно N недель
+    // Например: currentWeek=1, daysCompleted=7 -> показать popup перехода на неделю 2
+    const hasCompletedCurrentWeek = progress.daysCompleted === progress.currentWeek * 7;
+    
+    // Показываем только если есть что предложить (дни > 0)
+    return hasCompletedCurrentWeek && progress.daysCompleted > 0;
   }
 
   /**

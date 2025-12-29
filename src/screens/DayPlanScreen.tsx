@@ -6,17 +6,20 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  Modal,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { PainLevel, Exercise, ExerciseType, RootStackParamList, UserSettings } from '../types';
+import { PainLevel, Exercise, ExerciseType, RootStackParamList, UserSettings, RehabProgram, UserProgress } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
 import { useUserSettings } from '../hooks/useUserSettings';
 import { getActiveProgram, getActiveProgramExercises, initializePrograms } from '../utils/programLoader';
 import { convertProgramExercisesToLegacy } from '../utils/legacyAdapter';
+import RehabProgramLoader from '../utils/rehabProgramLoader';
+import UserProgressManager from '../utils/userProgressManager';
 
 const { width } = Dimensions.get('window');
 
@@ -41,59 +44,6 @@ const mapPainLevelToNumber = (painLevel: PainLevel): number => {
   return mapping[painLevel] || 1;
 };
 
-// Функция расчета времени выполнения упражнения
-const calculateExerciseTime = (exerciseType: ExerciseType, settings: UserSettings | null): number => {
-  if (!settings) return 180; // По умолчанию 3 минуты
-  
-  if (exerciseType === 'walk') {
-    return settings.walkSettings.duration * 60; // Минуты в секунды
-  }
-  
-  const { holdTime, repsSchema, restTime } = settings.exerciseSettings;
-  
-  // Рассчитываем общее время:
-  // - Время удержания для всех повторений
-  // - Время отдыха между подходами
-  // - Подготовка (примерно 30 секунд)
-  
-  const totalReps = repsSchema.reduce((sum, reps) => sum + reps, 0);
-  const totalSets = repsSchema.length;
-  
-  const exerciseTime = totalReps * holdTime; // Время выполнения
-  const restTimeTotal = (totalSets - 1) * restTime; // Отдых между подходами
-  const preparationTime = 30; // Подготовка
-  
-  return exerciseTime + restTimeTotal + preparationTime;
-};
-
-// Функция форматирования описания времени
-const formatExerciseDescription = (exerciseType: ExerciseType, settings: UserSettings | null): string => {
-  if (!settings) {
-    return exerciseType === 'walk' ? '5 мин' : '3 мин';
-  }
-  
-  if (exerciseType === 'walk') {
-    const { duration, sessions } = settings.walkSettings;
-    if (sessions === 1) {
-      return `${duration} мин`;
-    }
-    return `${sessions} сессии по ${duration} мин каждая`;
-  }
-  
-  const { holdTime, repsSchema, restTime } = settings.exerciseSettings;
-  const totalSets = repsSchema.length;
-  const setsDescription = repsSchema.join('-');
-  
-  // Рассчитываем общее время
-  const totalReps = repsSchema.reduce((sum, reps) => sum + reps, 0);
-  const exerciseTime = totalReps * holdTime;
-  const restTimeTotal = (totalSets - 1) * restTime;
-  const totalTimeInSeconds = exerciseTime + restTimeTotal + 30; // +30 сек на подготовку
-  const totalMinutes = Math.ceil(totalTimeInSeconds / 60);
-  
-  return `${totalSets} подхода (${setsDescription})\nУдержание: ${holdTime}с, отдых: ${restTime}с\n≈ ${totalMinutes} мин`;
-};
-
 const PAIN_RECOMMENDATIONS: Record<PainLevel, string> = {
   none: `Важно выполнить все упражнения, это укрепит мышцы спины и снизит риск рецидивов в будущем.
 
@@ -109,12 +59,59 @@ const DayPlanScreen: React.FC = () => {
   const { settings, loading } = useUserSettings();
   const [currentPainLevel, setCurrentPainLevel] = useState<PainLevel>('none');
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [selectedExercise, setSelectedExercise] = useState<string | null>(null); // Используем exerciseId вместо ExerciseType
-  const [activeProgramName, setActiveProgramName] = useState<string>(''); // Название активной программы
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [activeProgramName, setActiveProgramName] = useState<string>('');
+  
+  // Новые состояния для rehab system
+  const [rehabProgram, setRehabProgram] = useState<RehabProgram | null>(null);
+  const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
+  const [showProgressionPopup, setShowProgressionPopup] = useState(false);
+  const [showCompletionPopup, setShowCompletionPopup] = useState(false);
 
   const loadDayPlan = useCallback(async () => {
     try {
       console.log('[DayPlan] Loading day plan...');
+      
+      // Инициализация программ реабилитации
+      await RehabProgramLoader.initializePrograms();
+      
+      // Загружаем прогресс пользователя
+      let progress = await UserProgressManager.getProgress();
+      
+      // Если прогресса нет, инициализируем с первой программой
+      if (!progress) {
+        const allPrograms = await RehabProgramLoader.getAllPrograms();
+        if (allPrograms.length > 0) {
+          progress = await UserProgressManager.initializeProgress(allPrograms[0].id);
+        }
+      }
+      
+      setUserProgress(progress);
+      
+      // Загружаем текущую программу реабилитации
+      if (progress) {
+        const program = await RehabProgramLoader.getProgramById(progress.currentProgramId);
+        setRehabProgram(program);
+        
+        if (program) {
+          console.log(`[DayPlan] Loaded rehab program: ${program.nameRu}`);
+          setActiveProgramName(program.nameRu);
+          
+          // Проверяем, нужно ли показать popup прогрессии
+          const shouldShow = await UserProgressManager.shouldShowProgressionPopup();
+          if (shouldShow) {
+            setShowProgressionPopup(true);
+          }
+          
+          // Проверяем завершение программы
+          if (UserProgressManager.isProgramCompleted(program, progress.daysCompleted)) {
+            if (program.nextProgramId) {
+              setShowCompletionPopup(true);
+            }
+          }
+        }
+      }
+      
       // Загружаем текущий уровень боли
       const today = new Date().toISOString().split('T')[0];
       const todayPainStatus = await AsyncStorage.getItem(`painStatus_${today}`);
@@ -131,29 +128,22 @@ const DayPlanScreen: React.FC = () => {
       
       setCurrentPainLevel(painLevel);
 
-      // Загружаем активную программу
+      // Загружаем активную программу (старая система)
       const activeProgram = await getActiveProgram();
       
       if (!activeProgram) {
         console.warn('[DayPlan] No active program found, using fallback');
-        // Fallback: создаем старый план
         const fallbackExercises = createDayPlan(painLevel, settings);
         setExercises(fallbackExercises);
-        setActiveProgramName('Базовая программа');
         return;
       }
 
       console.log(`[DayPlan] Active program: ${activeProgram.nameRu} (${activeProgram.id})`);
-      setActiveProgramName(activeProgram.nameRu);
 
-      // Преобразуем painLevel в число (1-5)
       const painLevelNumber = mapPainLevelToNumber(painLevel);
-
-      // Загружаем упражнения из программы (с учетом адаптации по боли)
       const programExercises = await getActiveProgramExercises(painLevelNumber);
       console.log(`[DayPlan] Loaded ${programExercises.length} exercises from program`);
 
-      // Загружаем сохраненные упражнения со статусом выполнения
       const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
       let completedExerciseIds: string[] = [];
 
@@ -162,12 +152,10 @@ const DayPlanScreen: React.FC = () => {
         completedExerciseIds = oldExercises
           .filter((ex: Exercise) => ex.completed)
           .map((ex: Exercise) => {
-            // Если есть extendedData - берем оттуда, иначе используем id
             return ex.extendedData?.exerciseId || ex.id;
           });
       }
 
-      // Преобразуем в старый формат
       const dayExercises = await convertProgramExercisesToLegacy(
         programExercises,
         completedExerciseIds
@@ -175,58 +163,15 @@ const DayPlanScreen: React.FC = () => {
 
       console.log(`[DayPlan] Day plan loaded:`, dayExercises.map(ex => ex.name));
 
-      // Сохраняем обновленный план
       await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(dayExercises));
       setExercises(dayExercises);
     } catch (error) {
       console.error('[DayPlan] Error loading day plan:', error);
-      // Fallback план
       setExercises(createDayPlan('none', settings));
       setActiveProgramName('Базовая программа');
     }
   }, [settings]);
 
-  // Функция для принудительного обновления плана
-  const refreshDayPlan = useCallback(async () => {
-    if (!settings) return;
-    
-    console.log('Refreshing day plan with settings:', {
-      holdTime: settings.exerciseSettings.holdTime,
-      repsSchema: settings.exerciseSettings.repsSchema,
-      restTime: settings.exerciseSettings.restTime,
-      walkDuration: settings.walkSettings.duration,
-      walkSessions: settings.walkSettings.sessions
-    });
-    
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Получаем текущие упражнения
-      const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
-      
-      if (savedExercises) {
-        const currentExercises = JSON.parse(savedExercises);
-        
-        // Обновляем только описания, сохраняя статус выполнения
-        const updatedExercises = currentExercises.map((exercise: Exercise) => ({
-          ...exercise,
-          description: formatExerciseDescription(exercise.id as ExerciseType, settings)
-        }));
-        
-        console.log('Updated exercise descriptions:', updatedExercises.map(ex => ({ name: ex.name, description: ex.description })));
-        
-        await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(updatedExercises));
-        setExercises(updatedExercises);
-      } else {
-        // Если плана нет, создаем новый
-        await loadDayPlan();
-      }
-    } catch (error) {
-      console.error('Error refreshing day plan:', error);
-    }
-  }, [settings, loadDayPlan]);
-
-  // Обновляем план при возвращении на экран (например, после выбора новой программы)
   useFocusEffect(
     useCallback(() => {
       if (settings) {
@@ -235,7 +180,6 @@ const DayPlanScreen: React.FC = () => {
     }, [settings, loadDayPlan])
   );
 
-  // Инициализация программ при первом запуске
   useEffect(() => {
     const init = async () => {
       try {
@@ -255,7 +199,7 @@ const DayPlanScreen: React.FC = () => {
       plan.push({
         id: 'curl_up',
         name: EXERCISE_DATA.curl_up.name,
-        description: formatExerciseDescription('curl_up', userSettings),
+        description: '7с × 3-2-1, отдых 15с',
         completed: false,
         visible: true,
       });
@@ -263,7 +207,7 @@ const DayPlanScreen: React.FC = () => {
       plan.push({
         id: 'side_plank',
         name: EXERCISE_DATA.side_plank.name,
-        description: formatExerciseDescription('side_plank', userSettings),
+        description: '7с × 3-2-1, отдых 15с',
         completed: false,
         visible: true,
       });
@@ -271,7 +215,7 @@ const DayPlanScreen: React.FC = () => {
       plan.push({
         id: 'bird_dog',
         name: EXERCISE_DATA.bird_dog.name,
-        description: formatExerciseDescription('bird_dog', userSettings),
+        description: '7с × 3-2-1, отдых 15с',
         completed: false,
         visible: true,
       });
@@ -280,7 +224,7 @@ const DayPlanScreen: React.FC = () => {
     plan.push({
       id: 'walk',
       name: EXERCISE_DATA.walk.name,
-      description: painLevel === 'acute' ? 'По состоянию' : formatExerciseDescription('walk', userSettings),
+      description: painLevel === 'acute' ? 'По состоянию' : '5 мин × 3 сессии',
       completed: false,
       visible: true,
     });
@@ -299,7 +243,37 @@ const DayPlanScreen: React.FC = () => {
     return exercise.completed || false;
   };
 
-  // Отображаем индикатор загрузки пока настройки загружаются
+  const handleAcceptProgression = async () => {
+    if (!rehabProgram || !userProgress) return;
+    
+    const nextWeek = userProgress.currentWeek + 1;
+    await UserProgressManager.acceptProgression(rehabProgram, nextWeek);
+    await UserProgressManager.markProgressionPopupShown();
+    setShowProgressionPopup(false);
+    await loadDayPlan();
+  };
+
+  const handleDeclineProgression = async () => {
+    if (!rehabProgram || !userProgress) return;
+    
+    const suggestedWeek = userProgress.currentWeek + 1;
+    await UserProgressManager.declineProgression(rehabProgram, suggestedWeek);
+    await UserProgressManager.markProgressionPopupShown();
+    setShowProgressionPopup(false);
+  };
+
+  const handleSwitchToNextProgram = async () => {
+    if (!rehabProgram || !rehabProgram.nextProgramId) return;
+    
+    await UserProgressManager.switchProgram(rehabProgram.nextProgramId);
+    setShowCompletionPopup(false);
+    await loadDayPlan();
+  };
+
+  const handleStayOnCurrentProgram = () => {
+    setShowCompletionPopup(false);
+  };
+
   if (loading) {
     return (
       <LinearGradient colors={GRADIENTS.CONTENT_BACKGROUND} style={styles.container}>
@@ -313,13 +287,44 @@ const DayPlanScreen: React.FC = () => {
   return (
     <LinearGradient colors={GRADIENTS.CONTENT_BACKGROUND} style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Заголовок */}
         <Text style={styles.title}>План На День</Text>
 
-        {/* Активная программа */}
-        {activeProgramName && (
-          <View style={styles.programBadge}>
-            <Text style={styles.programBadgeText}>🎯 {activeProgramName}</Text>
+        {/* Программа и прогресс */}
+        {rehabProgram && userProgress && (
+          <View style={styles.programContainer}>
+            <View style={styles.programHeader}>
+              <Text style={styles.programIcon}>{rehabProgram.icon}</Text>
+              <Text style={styles.programName}>{rehabProgram.nameRu}</Text>
+            </View>
+            
+            {rehabProgram.durationDays !== -1 && (
+              <>
+                <Text style={styles.programProgress}>
+                  День {userProgress.daysCompleted} из {rehabProgram.durationDays}
+                </Text>
+                
+                <View style={styles.progressBarContainer}>
+                  <View 
+                    style={[
+                      styles.progressBar, 
+                      { width: `${UserProgressManager.getProgramProgress(rehabProgram, userProgress.daysCompleted)}%` }
+                    ]} 
+                  />
+                </View>
+              </>
+            )}
+            
+            <Text style={styles.weekInfo}>
+              📊 Неделя {userProgress.currentWeek} • Подходы: {
+                UserProgressManager.getCurrentWeekSettings(rehabProgram, userProgress.currentWeek).repsSchema.join('-')
+              }
+            </Text>
+            
+            {userProgress.currentStreak > 0 && (
+              <Text style={styles.streakInfo}>
+                🔥 Серия: {userProgress.currentStreak} {userProgress.currentStreak === 1 ? 'день' : 'дней'}
+              </Text>
+            )}
           </View>
         )}
 
@@ -334,7 +339,6 @@ const DayPlanScreen: React.FC = () => {
         <View style={styles.exercisesContainer}>
           {exercises.map((exercise, index) => (
             <View key={exercise.extendedData?.exerciseId || `${exercise.id}-${index}`} style={styles.exerciseRow}>
-              {/* Индикатор прогресса */}
               <View style={styles.progressIndicator}>
                 <View
                   style={[
@@ -365,7 +369,6 @@ const DayPlanScreen: React.FC = () => {
                 </View>
               </View>
 
-              {/* Карточка упражнения */}
               <TouchableOpacity
                 style={[
                   styles.exerciseCard,
@@ -401,12 +404,141 @@ const DayPlanScreen: React.FC = () => {
           ))}
         </View>
 
-        {/* Медицинское предупреждение */}
         <Text style={styles.disclaimer}>
           Приведенная информация носит справочный характер. Если вам требуется 
           медицинская консультация или постановка диагноза, обратитесь к специалисту.
         </Text>
       </ScrollView>
+
+      {/* Weekly Progression Popup */}
+      <Modal
+        visible={showProgressionPopup}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowProgressionPopup(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>🎉 Отличная работа!</Text>
+            
+            <Text style={styles.modalText}>
+              Вы выполняли программу 7 дней подряд! Готовы увеличить нагрузку?
+            </Text>
+            
+            {rehabProgram && userProgress && (
+              <>
+                <View style={styles.settingsComparison}>
+                  <Text style={styles.comparisonLabel}>Текущие настройки:</Text>
+                  <Text style={styles.comparisonValue}>
+                    • Подходы: {UserProgressManager.getCurrentWeekSettings(rehabProgram, userProgress.currentWeek).repsSchema.join('-')}
+                  </Text>
+                  <Text style={styles.comparisonValue}>
+                    • Удержание: {UserProgressManager.getCurrentWeekSettings(rehabProgram, userProgress.currentWeek).holdTime || 7} секунд
+                  </Text>
+                  <Text style={styles.comparisonValue}>
+                    • Отдых: {UserProgressManager.getCurrentWeekSettings(rehabProgram, userProgress.currentWeek).restTime || 15} секунд
+                  </Text>
+                </View>
+                
+                <View style={styles.settingsComparison}>
+                  <Text style={styles.comparisonLabel}>Новые настройки:</Text>
+                  <Text style={[styles.comparisonValue, styles.highlightedValue]}>
+                    • Подходы: {UserProgressManager.getCurrentWeekSettings(rehabProgram, userProgress.currentWeek + 1).repsSchema.join('-')} ⬆️
+                  </Text>
+                  <Text style={[styles.comparisonValue, styles.highlightedValue]}>
+                    • Удержание: {UserProgressManager.getCurrentWeekSettings(rehabProgram, userProgress.currentWeek + 1).holdTime || 7} секунд
+                  </Text>
+                  <Text style={[styles.comparisonValue, styles.highlightedValue]}>
+                    • Отдых: {UserProgressManager.getCurrentWeekSettings(rehabProgram, userProgress.currentWeek + 1).restTime || 15} секунд
+                  </Text>
+                </View>
+              </>
+            )}
+            
+            <Text style={styles.modalHint}>
+              Вы можете отклонить, если чувствуете дискомфорт
+            </Text>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.declineButton]}
+                onPress={handleDeclineProgression}
+              >
+                <Text style={styles.modalButtonText}>Нет, оставить</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.acceptButton]}
+                onPress={handleAcceptProgression}
+              >
+                <Text style={styles.modalButtonText}>Да, увеличить</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Program Completion Popup */}
+      <Modal
+        visible={showCompletionPopup}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowCompletionPopup(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>🎊 Поздравляем!</Text>
+            
+            <Text style={styles.modalText}>
+              Вы завершили программу{'\n'}
+              <Text style={styles.boldText}>"{rehabProgram?.nameRu}"</Text>
+            </Text>
+            
+            {rehabProgram && userProgress && (
+              <Text style={styles.modalText}>
+                {userProgress.daysCompleted} дней выполнено ✓
+              </Text>
+            )}
+            
+            {rehabProgram?.nextProgramId && (
+              <>
+                <Text style={styles.modalText}>
+                  Вы готовы перейти на следующий уровень:
+                </Text>
+                
+                <View style={styles.nextProgramPreview}>
+                  <Text style={styles.nextProgramTitle}>
+                    📈 {rehabProgram.nextProgramId === 'rehabilitation_consolidation' ? 'Закрепление результата' : 
+                       rehabProgram.nextProgramId === 'rehabilitation_maintenance' ? 'Профилактика' : 'Следующая программа'}
+                  </Text>
+                  <Text style={styles.nextProgramDescription}>
+                    Что изменится:{'\n'}
+                    • Новые упражнения{'\n'}
+                    • Увеличенная нагрузка{'\n'}
+                    • Больше разнообразия
+                  </Text>
+                </View>
+              </>
+            )}
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.declineButton]}
+                onPress={handleStayOnCurrentProgram}
+              >
+                <Text style={styles.modalButtonText}>Остаться</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.acceptButton]}
+                onPress={handleSwitchToNextProgram}
+              >
+                <Text style={styles.modalButtonText}>Начать новую</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 };
@@ -433,18 +565,60 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 15,
   },
-  programBadge: {
+  programContainer: {
     marginHorizontal: 20,
     marginBottom: 15,
-    padding: 12,
-    backgroundColor: COLORS.PRIMARY_ACCENT,
-    borderRadius: 10,
-    alignItems: 'center',
+    padding: 16,
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  programBadgeText: {
-    fontSize: 14,
+  programHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  programIcon: {
+    fontSize: 24,
+    marginRight: 8,
+  },
+  programName: {
+    fontSize: 16,
     fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  programProgress: {
+    fontSize: 14,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.7,
+    marginBottom: 8,
+  },
+  progressBarContainer: {
+    height: 8,
+    backgroundColor: COLORS.SCALE_COLOR,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: COLORS.PRIMARY_ACCENT,
+    borderRadius: 4,
+  },
+  weekInfo: {
+    fontSize: 13,
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 4,
+  },
+  streakInfo: {
+    fontSize: 13,
+    color: COLORS.PRIMARY_ACCENT,
+    fontWeight: '600',
   },
   recommendationsContainer: {
     marginHorizontal: 20,
@@ -501,7 +675,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.WHITE,
     borderRadius: 15,
     padding: 20,
-    minHeight: 120, // Минимальная высота для многострочного описания
+    minHeight: 120,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -528,7 +702,7 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     opacity: 0.8,
     lineHeight: 18,
-    minHeight: 50, // Минимальная высота для 3 строк
+    minHeight: 50,
   },
   startButtonContainer: {
     alignItems: 'center',
@@ -553,6 +727,105 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     marginHorizontal: 20,
     marginBottom: 20,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  modalText: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 22,
+  },
+  boldText: {
+    fontWeight: 'bold',
+  },
+  settingsComparison: {
+    backgroundColor: COLORS.SCALE_COLOR,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  comparisonLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 8,
+  },
+  comparisonValue: {
+    fontSize: 14,
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 4,
+  },
+  highlightedValue: {
+    color: COLORS.PRIMARY_ACCENT,
+    fontWeight: '600',
+  },
+  modalHint: {
+    fontSize: 13,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.7,
+    textAlign: 'center',
+    marginBottom: 20,
+    fontStyle: 'italic',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  declineButton: {
+    backgroundColor: COLORS.SCALE_COLOR,
+  },
+  acceptButton: {
+    backgroundColor: COLORS.CTA_BUTTON,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  nextProgramPreview: {
+    backgroundColor: COLORS.PRIMARY_ACCENT,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  nextProgramTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 8,
+  },
+  nextProgramDescription: {
+    fontSize: 14,
+    color: COLORS.TEXT_PRIMARY,
+    lineHeight: 20,
   },
 });
 

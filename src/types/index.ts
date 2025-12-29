@@ -206,6 +206,7 @@ export type OnboardingStackParamList = {
   ExercisePreview: undefined;
   ExerciseSettingsDetail: undefined;
   NotificationSetup: undefined;
+  RehabProgramSelection: undefined;
   Ready: undefined;
 };
 

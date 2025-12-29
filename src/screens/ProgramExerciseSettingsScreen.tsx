@@ -1,89 +1,94 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Modal,
-  TextInput,
   Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { RootStackParamList, TrainingProgram, ProgramExercise, ExtendedExerciseSettings } from '../types';
+import { RootStackParamList, ProgramExercise, ExtendedExerciseSettings, RehabProgram, UserProgress } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
-import { getActiveProgram, updateProgramExerciseSettings } from '../utils/programLoader';
+import RehabProgramLoader from '../utils/rehabProgramLoader';
+import UserProgressManager from '../utils/userProgressManager';
 import { getExerciseById } from '../constants/exercises/exercisesData';
 
-type NavigationProp = StackNavigationProp<RootStackParamList, 'ProgramExerciseSettings'>;
-
-const REPS_SCHEMAS = [
-  { label: '3-2-1', value: [3, 2, 1] },
-  { label: '4-3-2', value: [4, 3, 2] },
-  { label: '5-3-2', value: [5, 3, 2] },
-  { label: '6-4-2', value: [6, 4, 2] },
-];
+type NavigationProp = StackNavigationProp<RootStackParamList>;
 
 const ProgramExerciseSettingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+  
+  const [rehabProgram, setRehabProgram] = useState<RehabProgram | null>(null);
+  const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
+  const [exercises, setExercises] = useState<ProgramExercise[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeProgram, setActiveProgram] = useState<TrainingProgram | null>(null);
+  
   const [editingExercise, setEditingExercise] = useState<ProgramExercise | null>(null);
-  const [editingSettings, setEditingSettings] = useState<ExtendedExerciseSettings>({});
+  const [editingSettings, setEditingSettings] = useState<ExtendedExerciseSettings | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadProgram();
-    }, [])
-  );
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const loadProgram = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const program = await getActiveProgram();
-      setActiveProgram(program);
+      
+      const progress = await UserProgressManager.getProgress();
+      setUserProgress(progress);
+      
+      if (progress) {
+        const program = await RehabProgramLoader.getProgramById(progress.currentProgramId);
+        setRehabProgram(program);
+        
+        if (program) {
+          setExercises(program.exercises.filter(e => e.isEnabled));
+        }
+      }
     } catch (error) {
-      console.error('Error loading program:', error);
-      Alert.alert('Ошибка', 'Не удалось загрузить программу');
+      console.error('Error loading data:', error);
+      Alert.alert('Ошибка', 'Не удалось загрузить данные');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEditExercise = (exercise: ProgramExercise) => {
+  const handleEditExercise = async (exercise: ProgramExercise) => {
+    if (!rehabProgram) return;
+    
+    // Получаем текущие настройки с учетом weekly progression и manual overrides
+    const currentSettings = await UserProgressManager.getExerciseSettings(
+      rehabProgram,
+      exercise.exerciseId
+    );
+    
     setEditingExercise(exercise);
-    setEditingSettings({ ...exercise.settings });
+    setEditingSettings(currentSettings);
   };
 
   const handleSaveSettings = async () => {
-    if (!editingExercise || !activeProgram) return;
-
+    if (!editingExercise || !editingSettings) return;
+    
     try {
       setSaving(true);
-      await updateProgramExerciseSettings(
-        activeProgram.id,
+      
+      // Сохраняем как manual override (отключает auto-progression для этого упражнения)
+      await UserProgressManager.setManualOverride(
         editingExercise.exerciseId,
         editingSettings
       );
       
-      // Обновляем локальное состояние
-      const updatedProgram = {
-        ...activeProgram,
-        exercises: activeProgram.exercises.map(ex =>
-          ex.exerciseId === editingExercise.exerciseId
-            ? { ...ex, settings: editingSettings }
-            : ex
-        ),
-      };
-      setActiveProgram(updatedProgram);
-      setEditingExercise(null);
+      Alert.alert('Успешно', 'Настройки сохранены. Auto-progression отключен для этого упражнения.');
       
-      Alert.alert('Успешно', 'Настройки сохранены');
+      setEditingExercise(null);
+      setEditingSettings(null);
+      await loadData();
     } catch (error) {
       console.error('Error saving settings:', error);
       Alert.alert('Ошибка', 'Не удалось сохранить настройки');
@@ -92,307 +97,110 @@ const ProgramExerciseSettingsScreen: React.FC = () => {
     }
   };
 
-  const renderSettingsEditor = () => {
-    if (!editingExercise) return null;
+  const handleClearManualOverride = async (exerciseId: string) => {
+    try {
+      await UserProgressManager.clearManualOverride(exerciseId);
+      Alert.alert('Успешно', 'Ручные настройки сброшены. Auto-progression включен.');
+      await loadData();
+    } catch (error) {
+      console.error('Error clearing override:', error);
+      Alert.alert('Ошибка', 'Не удалось сбросить настройки');
+    }
+  };
 
-    const exerciseInfo = getExerciseById(editingExercise.exerciseId);
-    if (!exerciseInfo) return null;
-
-    const { executionType } = exerciseInfo;
-
-    return (
-      <Modal
-        visible={true}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setEditingExercise(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{exerciseInfo.nameRu}</Text>
-            <Text style={styles.modalSubtitle}>Тип: {executionType}</Text>
-
-            <ScrollView style={styles.settingsScroll}>
-              {/* Hold/Reps упражнения */}
-              {(executionType === 'hold' || executionType === 'reps') && (
-                <>
-                  <View style={styles.settingItem}>
-                    <Text style={styles.settingLabel}>Время удержания (сек)</Text>
-                    <View style={styles.counterContainer}>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          holdTime: Math.max(3, (editingSettings.holdTime || 7) - 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.counterValue}>{editingSettings.holdTime || 7}</Text>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          holdTime: Math.min(30, (editingSettings.holdTime || 7) + 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <View style={styles.settingItem}>
-                    <Text style={styles.settingLabel}>Схема повторений</Text>
-                    {REPS_SCHEMAS.map((schema, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={[
-                          styles.schemaOption,
-                          JSON.stringify(editingSettings.repsSchema) === JSON.stringify(schema.value) &&
-                            styles.selectedSchemaOption,
-                        ]}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          repsSchema: schema.value,
-                        })}
-                      >
-                        <Text style={styles.schemaLabel}>{schema.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <View style={styles.settingItem}>
-                    <Text style={styles.settingLabel}>Отдых между подходами (сек)</Text>
-                    <View style={styles.counterContainer}>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          restTime: Math.max(5, (editingSettings.restTime || 15) - 5),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.counterValue}>{editingSettings.restTime || 15}</Text>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          restTime: Math.min(60, (editingSettings.restTime || 15) + 5),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </>
-              )}
-
-              {/* Walk упражнения */}
-              {executionType === 'walk' && (
-                <>
-                  <View style={styles.settingItem}>
-                    <Text style={styles.settingLabel}>Длительность (мин)</Text>
-                    <View style={styles.counterContainer}>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          walkDuration: Math.max(1, (editingSettings.walkDuration || 5) - 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.counterValue}>{editingSettings.walkDuration || 5}</Text>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          walkDuration: Math.min(60, (editingSettings.walkDuration || 5) + 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <View style={styles.settingItem}>
-                    <Text style={styles.settingLabel}>Количество сессий</Text>
-                    <View style={styles.counterContainer}>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          walkSessions: Math.max(1, (editingSettings.walkSessions || 1) - 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.counterValue}>{editingSettings.walkSessions || 1}</Text>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          walkSessions: Math.min(5, (editingSettings.walkSessions || 1) + 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </>
-              )}
-
-              {/* Foam Rolling упражнения */}
-              {executionType === 'foam_rolling' && (
-                <>
-                  <View style={styles.settingItem}>
-                    <Text style={styles.settingLabel}>Длительность прокатки (сек)</Text>
-                    <View style={styles.counterContainer}>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          rollingDuration: Math.max(30, (editingSettings.rollingDuration || 60) - 10),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.counterValue}>{editingSettings.rollingDuration || 60}</Text>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          rollingDuration: Math.min(180, (editingSettings.rollingDuration || 60) + 10),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <View style={styles.settingItem}>
-                    <Text style={styles.settingLabel}>Количество сессий</Text>
-                    <View style={styles.counterContainer}>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          rollingSessions: Math.max(1, (editingSettings.rollingSessions || 1) - 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.counterValue}>{editingSettings.rollingSessions || 1}</Text>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          rollingSessions: Math.min(3, (editingSettings.rollingSessions || 1) + 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </>
-              )}
-
-              {/* Dynamic упражнения */}
-              {executionType === 'dynamic' && (
-                <>
-                  <View style={styles.settingItem}>
-                    <Text style={styles.settingLabel}>Количество повторений</Text>
-                    <View style={styles.counterContainer}>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          dynamicReps: Math.max(5, (editingSettings.dynamicReps || 10) - 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.counterValue}>{editingSettings.dynamicReps || 10}</Text>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          dynamicReps: Math.min(30, (editingSettings.dynamicReps || 10) + 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <View style={styles.settingItem}>
-                    <Text style={styles.settingLabel}>Количество подходов</Text>
-                    <View style={styles.counterContainer}>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          dynamicSets: Math.max(1, (editingSettings.dynamicSets || 2) - 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.counterValue}>{editingSettings.dynamicSets || 2}</Text>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => setEditingSettings({
-                          ...editingSettings,
-                          dynamicSets: Math.min(5, (editingSettings.dynamicSets || 2) + 1),
-                        })}
-                      >
-                        <Text style={styles.counterButtonText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </>
-              )}
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setEditingExercise(null)}
-              >
-                <Text style={styles.cancelButtonText}>Отмена</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.saveButton]}
-                onPress={handleSaveSettings}
-                disabled={saving}
-              >
-                <Text style={styles.saveButtonText}>
-                  {saving ? 'Сохранение...' : 'Сохранить'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+  const handleRollbackWeek = async () => {
+    Alert.alert(
+      'Откат на неделю назад',
+      'Вы уверены? Настройки всех упражнений вернутся к предыдущей неделе.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Откатить',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await UserProgressManager.rollbackWeeks(1);
+              Alert.alert('Успешно', 'Откат выполнен');
+              await loadData();
+            } catch (error) {
+              console.error('Error rolling back:', error);
+              Alert.alert('Ошибка', 'Не удалось выполнить откат');
+            }
+          },
+        },
+      ]
     );
+  };
+
+  const handleResetToWeek1 = async () => {
+    Alert.alert(
+      'Сброс до начала программы',
+      'Вы уверены? Все настройки вернутся к неделе 1.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Сбросить',
+          style: 'destructive',
+          onPress: async () => {
+            if (!userProgress) return;
+            
+            try {
+              await UserProgressManager.rollbackWeeks(userProgress.currentWeek - 1);
+              Alert.alert('Успешно', 'Настройки сброшены до недели 1');
+              await loadData();
+            } catch (error) {
+              console.error('Error resetting:', error);
+              Alert.alert('Ошибка', 'Не удалось сбросить настройки');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const getExecutionTypeLabel = (exercise: ProgramExercise): string => {
+    const exerciseInfo = getExerciseById(exercise.exerciseId);
+    if (!exerciseInfo) return 'unknown';
+    
+    const typeLabels: Record<string, string> = {
+      hold: 'Удержание',
+      reps: 'Повторения',
+      dynamic: 'Динамика',
+      foam_rolling: 'Прокатка',
+      walk: 'Ходьба',
+    };
+    
+    return typeLabels[exerciseInfo.executionType] || exerciseInfo.executionType;
+  };
+
+  const getSettingsSummary = (settings: ExtendedExerciseSettings, exerciseId: string): string => {
+    const exerciseInfo = getExerciseById(exerciseId);
+    if (!exerciseInfo) return '';
+    
+    switch (exerciseInfo.executionType) {
+      case 'hold':
+      case 'reps':
+        return `${settings.holdTime}с × ${settings.repsSchema.join('-')}, отдых ${settings.restTime}с`;
+      case 'dynamic':
+        return `${settings.dynamicReps} повт. × ${settings.dynamicSets} подх., отдых ${settings.restTime}с`;
+      case 'foam_rolling':
+        return `${settings.rollingDuration}с × ${settings.rollingSessions} сессии, отдых ${settings.restTime}с`;
+      case 'walk':
+        return `${settings.walkDuration} мин × ${settings.walkSessions} сессии`;
+      default:
+        return '';
+    }
+  };
+
+  const isManualOverride = (exerciseId: string): boolean => {
+    return userProgress?.manualOverrides[exerciseId] !== undefined;
   };
 
   if (loading) {
     return (
       <LinearGradient colors={GRADIENTS.CONTENT_BACKGROUND} style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.PRIMARY_ACCENT} />
           <Text style={styles.loadingText}>Загрузка...</Text>
-        </View>
-      </LinearGradient>
-    );
-  }
-
-  if (!activeProgram) {
-    return (
-      <LinearGradient colors={GRADIENTS.CONTENT_BACKGROUND} style={styles.container}>
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Программа не найдена</Text>
         </View>
       </LinearGradient>
     );
@@ -400,61 +208,208 @@ const ProgramExerciseSettingsScreen: React.FC = () => {
 
   return (
     <LinearGradient colors={GRADIENTS.CONTENT_BACKGROUND} style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Настройки упражнений</Text>
-        <Text style={styles.programName}>📋 {activeProgram.nameRu}</Text>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backButtonText}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Настройки упражнений</Text>
+        <View style={styles.backButton} />
+      </View>
 
-        <View style={styles.exercisesContainer}>
-          {activeProgram.exercises
-            .filter(ex => ex.isEnabled)
-            .map((exercise) => {
-              const exerciseInfo = getExerciseById(exercise.exerciseId);
-              if (!exerciseInfo) return null;
+      <ScrollView style={styles.scrollView}>
+        {/* Информация о программе */}
+        {rehabProgram && userProgress && (
+          <View style={styles.programInfo}>
+            <View style={styles.programHeader}>
+              <Text style={styles.programIcon}>{rehabProgram.icon}</Text>
+              <Text style={styles.programName}>{rehabProgram.nameRu}</Text>
+            </View>
+            <Text style={styles.programPhase}>
+              Неделя {userProgress.currentWeek} из {UserProgressManager.getTotalWeeks(rehabProgram)} • День {userProgress.daysCompleted}
+            </Text>
+          </View>
+        )}
 
-              const { settings } = exercise;
-              let settingsText = '';
+        {/* История прогрессии */}
+        {rehabProgram && userProgress && userProgress.progressionHistory.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>История прогрессии</Text>
+            
+            {userProgress.progressionHistory.slice(-5).reverse().map((entry, index) => (
+              <View key={index} style={styles.historyCard}>
+                <View style={styles.historyHeader}>
+                  <Text style={styles.historyDate}>{entry.date}</Text>
+                  <Text style={[
+                    styles.historyStatus,
+                    entry.accepted ? styles.acceptedStatus : styles.declinedStatus
+                  ]}>
+                    {entry.accepted ? '✓ Принято' : '✗ Отклонено'}
+                  </Text>
+                </View>
+                <Text style={styles.historyWeek}>Неделя {entry.week}</Text>
+                {entry.newSettings && (
+                  <Text style={styles.historySettings}>
+                    {entry.newSettings.repsSchema.join('-')}, {entry.newSettings.holdTime}с, отдых {entry.newSettings.restTime}с
+                  </Text>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
 
-              switch (exerciseInfo.executionType) {
-                case 'hold':
-                case 'reps':
-                  settingsText = `${settings.holdTime || 7}с × ${settings.repsSchema?.join('-') || '3-2-1'}, отдых ${settings.restTime || 15}с`;
-                  break;
-                case 'walk':
-                  settingsText = `${settings.walkDuration || 5} мин × ${settings.walkSessions || 1} сессия`;
-                  break;
-                case 'foam_rolling':
-                  settingsText = `${settings.rollingDuration || 60}с × ${settings.rollingSessions || 1} сессия`;
-                  break;
-                case 'dynamic':
-                  settingsText = `${settings.dynamicReps || 10} повторений × ${settings.dynamicSets || 2} подхода`;
-                  break;
-              }
+        {/* Текущая неделя */}
+        {rehabProgram && userProgress && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Настройки текущей недели</Text>
+            
+            <View style={styles.currentWeekCard}>
+              <Text style={styles.currentWeekLabel}>
+                Неделя {userProgress.currentWeek}
+              </Text>
+              <Text style={styles.currentWeekSettings}>
+                Подходы: {UserProgressManager.getCurrentWeekSettings(rehabProgram, userProgress.currentWeek).repsSchema.join('-')}
+              </Text>
+              <Text style={styles.currentWeekSettings}>
+                Удержание: {UserProgressManager.getCurrentWeekSettings(rehabProgram, userProgress.currentWeek).holdTime}с
+              </Text>
+              <Text style={styles.currentWeekSettings}>
+                Отдых: {UserProgressManager.getCurrentWeekSettings(rehabProgram, userProgress.currentWeek).restTime}с
+              </Text>
+            </View>
+          </View>
+        )}
 
-              return (
-                <TouchableOpacity
-                  key={exercise.exerciseId}
-                  style={styles.exerciseCard}
-                  onPress={() => handleEditExercise(exercise)}
-                >
-                  <View style={styles.exerciseHeader}>
-                    <Text style={styles.exerciseName}>{exerciseInfo.nameRu}</Text>
-                    <Text style={styles.exerciseType}>{exerciseInfo.executionType}</Text>
-                  </View>
-                  <Text style={styles.exerciseSettings}>{settingsText}</Text>
-                  <View style={styles.editIcon}>
-                    <Text style={styles.editIconText}>✏️</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+        {/* Действия с неделями */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>⚠️ Чувствуете дискомфорт?</Text>
+          
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleRollbackWeek}
+            disabled={!userProgress || userProgress.currentWeek <= 1}
+          >
+            <Text style={styles.actionButtonText}>⬅️ Откатиться на неделю назад</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.actionButton, styles.dangerButton]}
+            onPress={handleResetToWeek1}
+            disabled={!userProgress || userProgress.currentWeek <= 1}
+          >
+            <Text style={styles.actionButtonText}>🔄 Сбросить до начала программы</Text>
+          </TouchableOpacity>
         </View>
 
-        <Text style={styles.infoText}>
-          💡 Изменения настроек применяются только к текущей программе
-        </Text>
+        {/* Упражнения */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Упражнения</Text>
+          
+          {exercises.map((exercise) => {
+            const exerciseInfo = getExerciseById(exercise.exerciseId);
+            const hasManualOverride = isManualOverride(exercise.exerciseId);
+            
+            return (
+              <View key={exercise.exerciseId} style={styles.exerciseCard}>
+                <View style={styles.exerciseHeader}>
+                  <Text style={styles.exerciseName}>
+                    {exerciseInfo?.nameRu || exercise.exerciseId}
+                  </Text>
+                  {hasManualOverride && (
+                    <View style={styles.manualBadge}>
+                      <Text style={styles.manualBadgeText}>⚠️ Ручные</Text>
+                    </View>
+                  )}
+                </View>
+                
+                <Text style={styles.exerciseType}>
+                  {getExecutionTypeLabel(exercise)}
+                </Text>
+                
+                <Text style={styles.exerciseSettings}>
+                  {getSettingsSummary(exercise.settings, exercise.exerciseId)}
+                </Text>
+                
+                <View style={styles.exerciseActions}>
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => handleEditExercise(exercise)}
+                  >
+                    <Text style={styles.editButtonText}>Настроить вручную</Text>
+                  </TouchableOpacity>
+                  
+                  {hasManualOverride && (
+                    <TouchableOpacity
+                      style={styles.resetButton}
+                      onPress={() => handleClearManualOverride(exercise.exerciseId)}
+                    >
+                      <Text style={styles.resetButtonText}>Вернуть auto</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </View>
       </ScrollView>
 
-      {renderSettingsEditor()}
+      {/* Modal для редактирования */}
+      <Modal
+        visible={editingExercise !== null}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setEditingExercise(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Настройки упражнения</Text>
+            
+            {editingExercise && (
+              <Text style={styles.modalExerciseName}>
+                {getExerciseById(editingExercise.exerciseId)?.nameRu || editingExercise.exerciseId}
+              </Text>
+            )}
+            
+            <View style={styles.warningBox}>
+              <Text style={styles.warningText}>
+                💡 После изменения auto-progression будет отключен для этого упражнения
+              </Text>
+            </View>
+            
+            {editingSettings && editingExercise && (
+              <View style={styles.settingsEditor}>
+                {/* Здесь можно добавить интерфейс редактирования, пока просто показываем текущие */}
+                <Text style={styles.settingsLabel}>Текущие настройки:</Text>
+                <Text style={styles.settingsValue}>
+                  {getSettingsSummary(editingSettings, editingExercise.exerciseId)}
+                </Text>
+                
+                <Text style={styles.settingsHint}>
+                  (Полный редактор настроек будет добавлен позже)
+                </Text>
+              </View>
+            )}
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setEditingExercise(null)}
+              >
+                <Text style={styles.modalButtonText}>Отмена</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleSaveSettings}
+                disabled={saving}
+              >
+                <Text style={styles.modalButtonText}>
+                  {saving ? 'Сохранение...' : 'Сохранить'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 };
@@ -462,7 +417,34 @@ const ProgramExerciseSettingsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 60,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 15,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.WHITE,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backButtonText: {
+    fontSize: 24,
+    color: COLORS.TEXT_PRIMARY,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  scrollView: {
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -470,51 +452,124 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
+    fontSize: 18,
     color: COLORS.TEXT_PRIMARY,
     opacity: 0.7,
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  programInfo: {
+    margin: 20,
+    padding: 16,
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  programHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: COLORS.TEXT_PRIMARY,
-    opacity: 0.7,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-    textAlign: 'center',
     marginBottom: 8,
-    paddingHorizontal: 20,
+  },
+  programIcon: {
+    fontSize: 24,
+    marginRight: 8,
   },
   programName: {
     fontSize: 16,
+    fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
-    textAlign: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 20,
+  },
+  programPhase: {
+    fontSize: 14,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.7,
+  },
+  section: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 12,
+  },
+  historyCard: {
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  historyDate: {
+    fontSize: 13,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.7,
+  },
+  historyStatus: {
+    fontSize: 13,
     fontWeight: '600',
   },
-  exercisesContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+  acceptedStatus: {
+    color: '#4caf50',
+  },
+  declinedStatus: {
+    color: '#f44336',
+  },
+  historyWeek: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 4,
+  },
+  historySettings: {
+    fontSize: 13,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.8,
+  },
+  currentWeekCard: {
+    backgroundColor: COLORS.PRIMARY_ACCENT,
+    borderRadius: 12,
+    padding: 16,
+  },
+  currentWeekLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 8,
+  },
+  currentWeekSettings: {
+    fontSize: 14,
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 4,
+  },
+  actionButton: {
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  dangerButton: {
+    backgroundColor: '#ffebee',
+  },
+  actionButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
   },
   exerciseCard: {
     backgroundColor: COLORS.WHITE,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   exerciseHeader: {
     flexDirection: 'row',
@@ -528,36 +583,55 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     flex: 1,
   },
-  exerciseType: {
-    fontSize: 11,
-    color: COLORS.PRIMARY_ACCENT,
-    backgroundColor: COLORS.SCALE_COLOR,
+  manualBadge: {
+    backgroundColor: '#fff3e0',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: 6,
+  },
+  manualBadgeText: {
+    fontSize: 11,
     fontWeight: '600',
+    color: '#f57c00',
+  },
+  exerciseType: {
+    fontSize: 13,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.7,
+    marginBottom: 6,
   },
   exerciseSettings: {
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.TEXT_PRIMARY,
-    opacity: 0.7,
-    marginBottom: 4,
+    marginBottom: 12,
   },
-  editIcon: {
-    position: 'absolute',
-    right: 16,
-    bottom: 16,
+  exerciseActions: {
+    flexDirection: 'row',
+    gap: 8,
   },
-  editIconText: {
-    fontSize: 20,
+  editButton: {
+    flex: 1,
+    backgroundColor: COLORS.CTA_BUTTON,
+    borderRadius: 8,
+    padding: 10,
+    alignItems: 'center',
   },
-  infoText: {
-    fontSize: 13,
+  editButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
-    textAlign: 'center',
-    marginHorizontal: 20,
-    marginBottom: 30,
-    opacity: 0.7,
+  },
+  resetButton: {
+    backgroundColor: COLORS.SCALE_COLOR,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  resetButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
   },
   // Modal styles
   modalOverlay: {
@@ -569,79 +643,54 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.WHITE,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 20,
+    padding: 24,
     maxHeight: '80%',
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
-    marginBottom: 4,
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: COLORS.TEXT_PRIMARY,
-    opacity: 0.6,
-    marginBottom: 20,
-  },
-  settingsScroll: {
-    maxHeight: 400,
-  },
-  settingItem: {
-    marginBottom: 24,
-  },
-  settingLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-    marginBottom: 12,
-  },
-  counterContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  counterButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.PRIMARY_ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  counterButtonText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-  },
-  counterValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-    marginHorizontal: 30,
-    minWidth: 60,
-    textAlign: 'center',
-  },
-  schemaOption: {
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.SCALE_COLOR,
     marginBottom: 8,
   },
-  selectedSchemaOption: {
-    borderColor: COLORS.PRIMARY_ACCENT,
-    backgroundColor: COLORS.SCALE_COLOR,
+  modalExerciseName: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.7,
+    marginBottom: 16,
   },
-  schemaLabel: {
+  warningBox: {
+    backgroundColor: '#fff3e0',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  warningText: {
+    fontSize: 13,
+    color: '#f57c00',
+    lineHeight: 18,
+  },
+  settingsEditor: {
+    marginBottom: 20,
+  },
+  settingsLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
-    textAlign: 'center',
+    marginBottom: 8,
+  },
+  settingsValue: {
+    fontSize: 14,
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 8,
+  },
+  settingsHint: {
+    fontSize: 12,
+    color: COLORS.TEXT_PRIMARY,
+    opacity: 0.6,
+    fontStyle: 'italic',
   },
   modalButtons: {
     flexDirection: 'row',
-    marginTop: 20,
     gap: 12,
   },
   modalButton: {
@@ -653,17 +702,12 @@ const styles = StyleSheet.create({
   cancelButton: {
     backgroundColor: COLORS.SCALE_COLOR,
   },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-  },
   saveButton: {
     backgroundColor: COLORS.CTA_BUTTON,
   },
-  saveButtonText: {
+  modalButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
   },
 });
