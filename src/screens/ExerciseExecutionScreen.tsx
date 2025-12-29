@@ -15,9 +15,9 @@ import Video from 'react-native-video';
 // @ts-ignore - игнорируем типы для react-native-video
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 
-import { ExerciseType, ExerciseSession, UserSettings, RootStackParamList, ExerciseProgress, ExerciseButtonState, CompletedExercise } from '../types';
+import { ExerciseType, ExerciseSession, UserSettings, RootStackParamList, ExerciseProgress, ExerciseButtonState, CompletedExercise, RehabProgram, UserProgress } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
 import { EXERCISE_DESCRIPTIONS } from '../constants/exercises/descriptions';
 import { useSounds } from '../hooks';
@@ -25,6 +25,8 @@ import { useUserSettings } from '../hooks/useUserSettings';
 import { saveDayExercise } from '../utils/storage';
 import { getExerciseInfoFromLegacy, getExerciseSettingsFromLegacy } from '../utils/legacyAdapter';
 import { getExerciseById } from '../constants/exercises/exercisesData';
+import RehabProgramLoader from '../utils/rehabProgramLoader';
+import UserProgressManager from '../utils/userProgressManager';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -182,6 +184,10 @@ const ExerciseExecutionScreen: React.FC = () => {
   const [executionType, setExecutionType] = useState<string>('hold'); // По умолчанию hold
   const [exerciseSettings, setExerciseSettings] = useState<any>(null); // Settings из extendedData
   
+  // Состояние для программы реабилитации и прогресса
+  const [rehabProgram, setRehabProgram] = useState<RehabProgram | null>(null);
+  const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
+  
   const [timer, setTimer] = useState<TimerState>({
     currentTime: 0,
     isRunning: false,
@@ -214,6 +220,34 @@ const ExerciseExecutionScreen: React.FC = () => {
   useEffect(() => {
     loadExerciseProgress();
   }, []);
+
+  // Загрузка программы реабилитации и прогресса пользователя
+  // Используем useFocusEffect для обновления при возврате на экран (например, после отката недели)
+  useFocusEffect(
+    useCallback(() => {
+      const loadRehabData = async () => {
+        try {
+          // Загружаем прогресс пользователя
+          const progress = await UserProgressManager.getProgress();
+          if (progress) {
+            setUserProgress(progress);
+            
+            // Загружаем программу
+            await RehabProgramLoader.initializePrograms();
+            const program = await RehabProgramLoader.getProgramById(progress.currentProgramId);
+            if (program) {
+              setRehabProgram(program);
+              console.log('[ExerciseExecution] Loaded program:', program.nameRu, 'week:', progress.currentWeek);
+            }
+          }
+        } catch (error) {
+          console.error('[ExerciseExecution] Error loading rehab data:', error);
+        }
+      };
+      
+      loadRehabData();
+    }, [])
+  );
 
   // Загрузка exerciseId из extendedData и обновление видео
   useEffect(() => {
@@ -251,10 +285,14 @@ const ExerciseExecutionScreen: React.FC = () => {
               console.log('Using extendedData.executionType:', execType);
             }
             
-            // Извлекаем settings
-            if (currentExercise.extendedData.settings) {
+            // Извлекаем settings из UserProgressManager (учитывает weekly progression и manual overrides)
+            if (rehabProgram && userProgress) {
+              exSettings = UserProgressManager.getExerciseSettings(rehabProgram, exerciseId, userProgress);
+              console.log('[ExerciseExecution] Using UserProgressManager.getExerciseSettings:', exSettings);
+            } else if (currentExercise.extendedData.settings) {
+              // Fallback на extendedData если программа еще не загружена
               exSettings = currentExercise.extendedData.settings;
-              console.log('Using extendedData.settings:', exSettings);
+              console.log('[ExerciseExecution] Using extendedData.settings (fallback):', exSettings);
             }
           } else {
             // Нет extendedData - используем старый exerciseType
@@ -286,7 +324,7 @@ const ExerciseExecutionScreen: React.FC = () => {
     };
     
     loadExerciseData();
-  }, [exerciseType, exerciseName]);
+  }, [exerciseType, exerciseName, rehabProgram, userProgress]);
 
   // Логика таймера
   useEffect(() => {

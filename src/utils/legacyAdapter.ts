@@ -68,7 +68,8 @@ export const formatExerciseDescriptionFromSettings = (
  */
 export const convertProgramExerciseToLegacy = (
   programExercise: ProgramExercise,
-  completed: boolean = false
+  completed: boolean = false,
+  programId?: string
 ): Exercise | null => {
   const exerciseInfo = getExerciseById(programExercise.exerciseId);
   
@@ -88,6 +89,7 @@ export const convertProgramExerciseToLegacy = (
       exerciseId: programExercise.exerciseId,
       exerciseInfo,
       settings: programExercise.settings,
+      programId, // Добавляем programId для отслеживания смены программы
     },
   };
 };
@@ -114,7 +116,8 @@ const mapToLegacyExerciseId = (newExerciseId: string): ExerciseType => {
  */
 export const convertProgramExercisesToLegacy = async (
   programExercises: ProgramExercise[],
-  completedExerciseIds: string[] = []
+  completedExerciseIds: string[] = [],
+  programId?: string
 ): Promise<Exercise[]> => {
   const exercises: Exercise[] = [];
 
@@ -124,7 +127,7 @@ export const convertProgramExercisesToLegacy = async (
     }
 
     const isCompleted = completedExerciseIds.includes(programExercise.exerciseId);
-    const exercise = convertProgramExerciseToLegacy(programExercise, isCompleted);
+    const exercise = convertProgramExerciseToLegacy(programExercise, isCompleted, programId);
     
     if (exercise) {
       exercises.push(exercise);

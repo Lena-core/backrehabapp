@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,6 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { PainLevel, Exercise, ExerciseType, RootStackParamList, UserSettings, RehabProgram, UserProgress } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
 import { useUserSettings } from '../hooks/useUserSettings';
-import { getActiveProgram, getActiveProgramExercises, initializePrograms } from '../utils/programLoader';
 import { convertProgramExercisesToLegacy } from '../utils/legacyAdapter';
 import RehabProgramLoader from '../utils/rehabProgramLoader';
 import UserProgressManager from '../utils/userProgressManager';
@@ -30,18 +29,6 @@ const EXERCISE_DATA: Record<ExerciseType, { name: string; gif: string }> = {
   side_plank: { name: 'Боковая планка', gif: 'side_plank.gif' },
   bird_dog: { name: 'Птица-собака', gif: 'cat_dog_2.gif' },
   walk: { name: 'Ходьба', gif: '' },
-};
-
-// Преобразование PainLevel в число (1-5) для новой системы
-const mapPainLevelToNumber = (painLevel: PainLevel): number => {
-  const mapping: Record<PainLevel, number> = {
-    'none': 1,
-    'mild': 2,
-    'moderate': 3,
-    'severe': 4,
-    'acute': 5,
-  };
-  return mapping[painLevel] || 1;
 };
 
 const PAIN_RECOMMENDATIONS: Record<PainLevel, string> = {
@@ -89,8 +76,10 @@ const DayPlanScreen: React.FC = () => {
       setUserProgress(progress);
       
       // Загружаем текущую программу реабилитации
+      let program: RehabProgram | null = null;
+      
       if (progress) {
-        const program = await RehabProgramLoader.getProgramById(progress.currentProgramId);
+        program = await RehabProgramLoader.getProgramById(progress.currentProgramId);
         setRehabProgram(program);
         
         if (program) {
@@ -128,40 +117,89 @@ const DayPlanScreen: React.FC = () => {
       
       setCurrentPainLevel(painLevel);
 
-      // Загружаем активную программу (старая система)
-      const activeProgram = await getActiveProgram();
-      
-      if (!activeProgram) {
-        console.warn('[DayPlan] No active program found, using fallback');
+      // ИСПОЛЬЗУЕМ НОВУЮ СИСТЕМУ: берем упражнения напрямую из rehabProgram
+      if (!progress || !program) {
+        console.warn('[DayPlan] No progress or program found, using fallback');
         const fallbackExercises = createDayPlan(painLevel, settings);
         setExercises(fallbackExercises);
         return;
       }
 
-      console.log(`[DayPlan] Active program: ${activeProgram.nameRu} (${activeProgram.id})`);
+      console.log(`[DayPlan] Using rehab program: ${program.nameRu} (${program.id})`);
 
-      const painLevelNumber = mapPainLevelToNumber(painLevel);
-      const programExercises = await getActiveProgramExercises(painLevelNumber);
-      console.log(`[DayPlan] Loaded ${programExercises.length} exercises from program`);
+      // Получаем настройки текущей недели
+      const currentWeekSettings = UserProgressManager.getCurrentWeekSettings(program, progress.currentWeek);
+      console.log(`[DayPlan] Week ${progress.currentWeek} settings:`, currentWeekSettings);
+
+      // Получаем упражнения из программы и применяем настройки текущей недели
+      let programExercises = program.exercises
+        .filter(ex => ex.isEnabled)
+        .sort((a, b) => a.order - b.order)
+        .map(ex => {
+          // Мержим ТОЛЬКО релевантные поля настроек (исключаем week)
+          const mergedSettings = { ...ex.settings };
+          
+          if (currentWeekSettings.holdTime !== undefined) mergedSettings.holdTime = currentWeekSettings.holdTime;
+          if (currentWeekSettings.repsSchema !== undefined) mergedSettings.repsSchema = currentWeekSettings.repsSchema;
+          if (currentWeekSettings.restTime !== undefined) mergedSettings.restTime = currentWeekSettings.restTime;
+          if (currentWeekSettings.dynamicReps !== undefined) mergedSettings.dynamicReps = currentWeekSettings.dynamicReps;
+          if (currentWeekSettings.dynamicSets !== undefined) mergedSettings.dynamicSets = currentWeekSettings.dynamicSets;
+          if (currentWeekSettings.rollingDuration !== undefined) mergedSettings.rollingDuration = currentWeekSettings.rollingDuration;
+          if (currentWeekSettings.rollingSessions !== undefined) mergedSettings.rollingSessions = currentWeekSettings.rollingSessions;
+          if (currentWeekSettings.walkDuration !== undefined) mergedSettings.walkDuration = currentWeekSettings.walkDuration;
+          if (currentWeekSettings.walkSessions !== undefined) mergedSettings.walkSessions = currentWeekSettings.walkSessions;
+          
+          return {
+            ...ex,
+            settings: mergedSettings,
+          };
+        });
+      
+      console.log(`[DayPlan] Loaded ${programExercises.length} exercises with week ${progress.currentWeek} settings`);
+      console.log(`[DayPlan] Schema: ${currentWeekSettings.repsSchema?.join('-') || 'default'}`);
 
       const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
       let completedExerciseIds: string[] = [];
 
-      if (savedExercises) {
+      console.log(`[DayPlan] Saved exercises exist:`, !!savedExercises);
+
+      // Проверяем, совпадает ли сохраненная программа с текущей
+      if (savedExercises && progress) {
         const oldExercises = JSON.parse(savedExercises);
-        completedExerciseIds = oldExercises
-          .filter((ex: Exercise) => ex.completed)
-          .map((ex: Exercise) => {
-            return ex.extendedData?.exerciseId || ex.id;
-          });
+        const savedProgramId = oldExercises[0]?.extendedData?.programId;
+        
+        console.log(`[DayPlan] Saved program ID: ${savedProgramId}`);
+        console.log(`[DayPlan] Current program ID: ${progress.currentProgramId}`);
+        
+        // Если программа изменилась - очищаем упражнения
+        if (savedProgramId && savedProgramId !== progress.currentProgramId) {
+          console.log(`[DayPlan] ✅ Program changed! Clearing exercises from ${savedProgramId} to ${progress.currentProgramId}`);
+          await AsyncStorage.removeItem(`exercises_${today}`);
+          completedExerciseIds = [];
+        } else {
+          console.log(`[DayPlan] ℹ️ Same program, keeping completed exercises`);
+          // Программа не изменилась - берем завершенные ID
+          completedExerciseIds = oldExercises
+            .filter((ex: Exercise) => ex.completed)
+            .map((ex: Exercise) => {
+              return ex.extendedData?.exerciseId || ex.id;
+            });
+          console.log(`[DayPlan] Completed exercises:`, completedExerciseIds);
+        }
+      } else {
+        console.log(`[DayPlan] ℹ️ No saved exercises, generating fresh`);
       }
 
       const dayExercises = await convertProgramExercisesToLegacy(
         programExercises,
-        completedExerciseIds
+        completedExerciseIds,
+        progress?.currentProgramId
       );
 
-      console.log(`[DayPlan] Day plan loaded:`, dayExercises.map(ex => ex.name));
+      console.log(`[DayPlan] Day plan loaded with ${dayExercises.length} exercises:`);
+      dayExercises.forEach((ex, idx) => {
+        console.log(`  ${idx + 1}. ${ex.name} - ${ex.description}`);
+      });
 
       await AsyncStorage.setItem(`exercises_${today}`, JSON.stringify(dayExercises));
       setExercises(dayExercises);
@@ -179,18 +217,6 @@ const DayPlanScreen: React.FC = () => {
       }
     }, [settings, loadDayPlan])
   );
-
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await initializePrograms();
-        console.log('Programs initialized successfully');
-      } catch (error) {
-        console.error('Error initializing programs:', error);
-      }
-    };
-    init();
-  }, []);
 
   const createDayPlan = (painLevel: PainLevel, userSettings: UserSettings | null = null): Exercise[] => {
     const plan: Exercise[] = [];

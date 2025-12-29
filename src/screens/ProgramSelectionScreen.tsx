@@ -11,16 +11,17 @@ import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { RootStackParamList, TrainingProgram } from '../types';
+import { RootStackParamList, RehabProgram } from '../types';
 import { COLORS, GRADIENTS } from '../constants/colors';
-import { getPresetPrograms, getActiveProgram, setActiveProgram } from '../utils/programLoader';
+import RehabProgramLoader from '../utils/rehabProgramLoader';
+import UserProgressManager from '../utils/userProgressManager';
 
 type NavigationProp = StackNavigationProp<RootStackParamList, 'ProgramSelection'>;
 
 const ProgramSelectionScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const [programs, setPrograms] = useState<TrainingProgram[]>([]);
-  const [activeProgram, setActiveProgramState] = useState<TrainingProgram | null>(null);
+  const [programs, setPrograms] = useState<RehabProgram[]>([]);
+  const [currentProgramId, setCurrentProgramId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -31,31 +32,43 @@ const ProgramSelectionScreen: React.FC = () => {
   const loadPrograms = async () => {
     try {
       setLoading(true);
-      const [presetPrograms, currentActiveProgram] = await Promise.all([
-        getPresetPrograms(),
-        getActiveProgram(),
-      ]);
-      setPrograms(presetPrograms);
-      setActiveProgramState(currentActiveProgram);
+      
+      // Инициализируем программы
+      await RehabProgramLoader.initializePrograms();
+      
+      // Загружаем все программы
+      const allPrograms = await RehabProgramLoader.getAllPrograms();
+      
+      // Загружаем текущую программу пользователя
+      const progress = await UserProgressManager.getProgress();
+      
+      setPrograms(allPrograms);
+      setCurrentProgramId(progress?.currentProgramId || null);
+      
+      console.log('[ProgramSelection] Loaded', allPrograms.length, 'programs');
+      console.log('[ProgramSelection] Current program:', progress?.currentProgramId);
     } catch (error) {
-      console.error('Error loading programs:', error);
+      console.error('[ProgramSelection] Error loading programs:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSelectProgram = async (program: TrainingProgram) => {
+  const handleSelectProgram = async (program: RehabProgram) => {
     try {
       setSaving(true);
-      await setActiveProgram(program.id);
-      setActiveProgramState(program);
+      console.log('[ProgramSelection] Switching to program:', program.id);
+      
+      // Переключаемся на новую программу
+      await UserProgressManager.switchProgram(program.id);
+      setCurrentProgramId(program.id);
       
       setTimeout(() => {
         setSaving(false);
         navigation.goBack();
       }, 500);
     } catch (error) {
-      console.error('Error setting active program:', error);
+      console.error('[ProgramSelection] Error setting active program:', error);
       setSaving(false);
     }
   };
@@ -81,7 +94,7 @@ const ProgramSelectionScreen: React.FC = () => {
 
         <View style={styles.programsContainer}>
           {programs.map((program) => {
-            const isActive = activeProgram?.id === program.id;
+            const isActive = currentProgramId === program.id;
             
             return (
               <TouchableOpacity
@@ -97,8 +110,10 @@ const ProgramSelectionScreen: React.FC = () => {
                   <Text style={styles.programIcon}>{program.icon}</Text>
                   <View style={styles.programTitleContainer}>
                     <Text style={styles.programName}>{program.nameRu}</Text>
-                    {program.adaptToPainLevel && (
-                      <Text style={styles.adaptiveBadge}>📊 Адаптивная</Text>
+                    {program.durationDays > 0 && (
+                      <Text style={styles.durationBadge}>
+                        📅 {program.durationDays} дней
+                      </Text>
                     )}
                   </View>
                   {isActive && (
@@ -114,9 +129,9 @@ const ProgramSelectionScreen: React.FC = () => {
                   <Text style={styles.exerciseCount}>
                     {program.exercises.filter(ex => ex.isEnabled).length} упражнений
                   </Text>
-                  {program.createdAt && (
-                    <Text style={styles.dateText}>
-                      Создана: {new Date(program.createdAt).toLocaleDateString('ru-RU')}
+                  {program.weeklyProgression && program.weeklyProgression.length > 0 && (
+                    <Text style={styles.weekText}>
+                      📊 {program.weeklyProgression.length} недель
                     </Text>
                   )}
                 </View>
@@ -213,7 +228,7 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     marginBottom: 4,
   },
-  adaptiveBadge: {
+  durationBadge: {
     fontSize: 11,
     color: COLORS.PRIMARY_ACCENT,
     fontWeight: '600',
@@ -252,10 +267,10 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     opacity: 0.7,
   },
-  dateText: {
-    fontSize: 11,
-    color: COLORS.TEXT_PRIMARY,
-    opacity: 0.5,
+  weekText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.PRIMARY_ACCENT,
   },
   infoContainer: {
     marginHorizontal: 20,
