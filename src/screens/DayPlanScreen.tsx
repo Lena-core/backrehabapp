@@ -31,16 +31,6 @@ const EXERCISE_DATA: Record<ExerciseType, { name: string; gif: string }> = {
   walk: { name: 'Ходьба', gif: '' },
 };
 
-const PAIN_RECOMMENDATIONS: Record<PainLevel, string> = {
-  none: `Важно выполнить все упражнения, это укрепит мышцы спины и снизит риск рецидивов в будущем.
-
-Если чувствуете, что нужна дополнительная нагрузка, добавьте одно повторение к каждому подходу. Эта стратегия поможет уменьшить судороги в мышцах спины и повысить выносливость. Никогда не жертвуйте правильной техникой выполнения упражнения ради большего количества повторений.`,
-  mild: 'При выполнении упражнений не переусердствуйте, опирайтесь на свои ощущения.',
-  moderate: 'Опирайтесь на свои ощущения. Снизьте количество повторов упражнений до минимального. Обязательно походите.',
-  severe: 'Опирайтесь на свои ощущения. Снизьте количество повторов упражнений до минимального. Обязательно походите.',
-  acute: 'Рекомендуется отдохнуть от упражнений и подождать, когда боль снизится. Походите, если состояние это позволяет.',
-};
-
 const DayPlanScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const { settings, loading } = useUserSettings();
@@ -453,12 +443,7 @@ const DayPlanScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Рекомендации */}
-        <View style={styles.recommendationsContainer}>
-          <Text style={styles.recommendationsText}>
-            {PAIN_RECOMMENDATIONS[currentPainLevel]}
-          </Text>
-        </View>
+
 
         {/* Список упражнений */}
         <View style={styles.exercisesContainer}>
@@ -768,24 +753,7 @@ const styles = StyleSheet.create({
     color: COLORS.PRIMARY_ACCENT,
     fontWeight: '600',
   },
-  recommendationsContainer: {
-    marginHorizontal: 20,
-    marginBottom: 30,
-    padding: 20,
-    backgroundColor: COLORS.WHITE,
-    borderRadius: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  recommendationsText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: COLORS.TEXT_PRIMARY,
-    textAlign: 'left',
-  },
+
   exercisesContainer: {
     marginHorizontal: 20,
     marginBottom: 30,
