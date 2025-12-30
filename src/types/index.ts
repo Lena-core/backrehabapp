@@ -121,6 +121,10 @@ export type RootStackParamList = {
   Settings: undefined;
   ProgramSelection: undefined;
   ProgramExerciseSettings: undefined;
+  ManualExerciseSettings: {
+    exerciseId: string;
+    exerciseName: string;
+  };
   ExerciseExecution: {
     exerciseType: string; // Изменено с ExerciseType на string
     exerciseName: string;

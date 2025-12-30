@@ -1,0 +1,90 @@
+===========================================
+РУЧНАЯ ИНСТРУКЦИЯ ПО ИСПРАВЛЕНИЮ
+DayPlanScreen.tsx
+===========================================
+
+ФАЙЛ: src/screens/DayPlanScreen.tsx
+
+Найди строку 135 (или около того):
+  let programExercises = program.exercises
+
+ЗАМЕНИ весь блок с:
+  let programExercises = program.exercises
+    .filter(ex => ex.isEnabled)
+    .sort((a, b) => a.order - b.order)
+    .map(ex => {
+      // Мержим ТОЛЬКО релевантные поля настроек (исключаем week)
+      const mergedSettings = { ...ex.settings };
+      
+      if (currentWeekSettings.holdTime !== undefined) mergedSettings.holdTime = currentWeekSettings.holdTime;
+      if (currentWeekSettings.repsSchema !== undefined) mergedSettings.repsSchema = currentWeekSettings.repsSchema;
+      if (currentWeekSettings.restTime !== undefined) mergedSettings.restTime = currentWeekSettings.restTime;
+      if (currentWeekSettings.dynamicReps !== undefined) mergedSettings.dynamicReps = currentWeekSettings.dynamicReps;
+      if (currentWeekSettings.dynamicSets !== undefined) mergedSettings.dynamicSets = currentWeekSettings.dynamicSets;
+      if (currentWeekSettings.rollingDuration !== undefined) mergedSettings.rollingDuration = currentWeekSettings.rollingDuration;
+      if (currentWeekSettings.rollingSessions !== undefined) mergedSettings.rollingSessions = currentWeekSettings.rollingSessions;
+      if (currentWeekSettings.walkDuration !== undefined) mergedSettings.walkDuration = currentWeekSettings.walkDuration;
+      if (currentWeekSettings.walkSessions !== undefined) mergedSettings.walkSessions = currentWeekSettings.walkSessions;
+      
+      return {
+        ...ex,
+        settings: mergedSettings,
+      };
+    });
+
+НА:
+  let programExercises = await Promise.all(
+    program.exercises
+      .filter(ex => ex.isEnabled)
+      .sort((a, b) => a.order - b.order)
+      .map(async (ex) => {
+        // 1. Базовые настройки упражнения
+        const mergedSettings = { ...ex.settings };
+        
+        // 2. Применяем недельные настройки из программы
+        if (currentWeekSettings.holdTime !== undefined) mergedSettings.holdTime = currentWeekSettings.holdTime;
+        if (currentWeekSettings.repsSchema !== undefined) mergedSettings.repsSchema = currentWeekSettings.repsSchema;
+        if (currentWeekSettings.restTime !== undefined) mergedSettings.restTime = currentWeekSettings.restTime;
+        if (currentWeekSettings.dynamicReps !== undefined) mergedSettings.dynamicReps = currentWeekSettings.dynamicReps;
+        if (currentWeekSettings.dynamicSets !== undefined) mergedSettings.dynamicSets = currentWeekSettings.dynamicSets;
+        if (currentWeekSettings.rollingDuration !== undefined) mergedSettings.rollingDuration = currentWeekSettings.rollingDuration;
+        if (currentWeekSettings.rollingSessions !== undefined) mergedSettings.rollingSessions = currentWeekSettings.rollingSessions;
+        if (currentWeekSettings.walkDuration !== undefined) mergedSettings.walkDuration = currentWeekSettings.walkDuration;
+        if (currentWeekSettings.walkSessions !== undefined) mergedSettings.walkSessions = currentWeekSettings.walkSessions;
+        
+        // 3. ⚙️ ПРИМЕНЯЕМ РУЧНЫЕ НАСТРОЙКИ (самый высокий приоритет!)
+        try {
+          const manualSettingsKey = `manual_exercise_settings_${ex.exerciseId}`;
+          const manualSettingsJson = await AsyncStorage.getItem(manualSettingsKey);
+          
+          if (manualSettingsJson) {
+            const manualSettings = JSON.parse(manualSettingsJson);
+            console.log(`[DayPlan] ⚙️ Applying manual settings for ${ex.exerciseId}:`, manualSettings);
+            // Применяем ручные настройки поверх всех остальных
+            Object.assign(mergedSettings, manualSettings);
+          }
+        } catch (error) {
+          console.error(`[DayPlan] Error loading manual settings for ${ex.exerciseId}:`, error);
+        }
+        
+        return {
+          ...ex,
+          settings: mergedSettings,
+        };
+      })
+  );
+
+КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ:
+1. Добавлено: await Promise.all( в начале
+2. Добавлено: ) в конце после последней закрывающей скобки
+3. Изменено: .map(ex => { на .map(async (ex) => {
+4. Добавлен: блок загрузки ручных настроек (try/catch с AsyncStorage)
+
+ПОСЛЕ ИЗМЕНЕНИЯ:
+- Сохрани файл (Ctrl+S)
+- Reload приложение (R, R)
+- Измени настройки через ⚙️
+- Вернись на экран "План дня"
+- Настройки обновятся!
+
+===========================================

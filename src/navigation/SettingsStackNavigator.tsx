@@ -5,7 +5,6 @@ import { COLORS } from '../constants/colors';
 
 // Импорт экранов настроек
 import SettingsMainScreen from '../screens/SettingsMainScreen';
-import ExerciseSettingsScreen from '../screens/ExerciseSettingsScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import FeedbackScreen from '../screens/FeedbackScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
@@ -34,14 +33,6 @@ const SettingsStackNavigator: React.FC = () => {
         name="SettingsMain" 
         component={SettingsMainScreen}
         options={{ headerShown: false }}
-      />
-      <SettingsStack.Screen 
-        name="ExerciseSettings" 
-        component={ExerciseSettingsScreen}
-        options={{ 
-          title: 'Настройки упражнений',
-          headerTitleAlign: 'center',
-        }}
       />
       <SettingsStack.Screen 
         name="Notifications" 

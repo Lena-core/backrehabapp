@@ -1,0 +1,313 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
+
+import { 
+  ExerciseType, 
+  ExerciseProgress, 
+  ExerciseButtonState, 
+  CompletedExercise,
+  RehabProgram,
+  UserProgress,
+  UserSettings
+} from '../types';
+import { getExerciseById } from '../constants/exercises/exercisesData';
+import RehabProgramLoader from '../utils/rehabProgramLoader';
+import UserProgressManager from '../utils/userProgressManager';
+import { saveDayExercise } from '../utils/storage';
+import { getExerciseVideo, getInstructions, EXERCISE_ANIMATIONS, DEFAULT_PLACEHOLDER } from '../constants/exerciseExecutionConstants';
+
+export interface TimerState {
+  currentTime: number;
+  isRunning: boolean;
+  phase: 'prepare' | 'exercise' | 'miniRest' | 'rest' | 'rolling' | 'completed' | 'schemeCompleted';
+  currentSet: number;
+  currentRep: number;
+  currentSession: number;
+  instruction: string;
+  holdSoundPlayed: boolean;
+  currentScheme: 1 | 2;
+  schemeOneCompleted: boolean;
+}
+
+interface UseExerciseExecutionProps {
+  exerciseType: string;
+  exerciseName: string;
+  settings: UserSettings | null;
+  playSound: (soundType: string) => void;
+}
+
+export const useExerciseExecution = ({
+  exerciseType,
+  exerciseName,
+  settings,
+  playSound
+}: UseExerciseExecutionProps) => {
+  // State для данных упражнения
+  const [currentExerciseId, setCurrentExerciseId] = useState<string>(exerciseType);
+  const [executionType, setExecutionType] = useState<string>('hold');
+  const [exerciseSettings, setExerciseSettings] = useState<any>(null);
+  const [videoSource, setVideoSource] = useState<any>(DEFAULT_PLACEHOLDER);
+  const [isLoadingVideo, setIsLoadingVideo] = useState<boolean>(true);
+
+  // State для программы и прогресса
+  const [rehabProgram, setRehabProgram] = useState<RehabProgram | null>(null);
+  const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
+
+  // State для прогресса упражнения
+  const [exerciseProgress, setExerciseProgress] = useState<ExerciseProgress | null>(null);
+  const [buttonState, setButtonState] = useState<ExerciseButtonState>('start');
+
+  // State таймера
+  const [timer, setTimer] = useState<TimerState>({
+    currentTime: 0,
+    isRunning: false,
+    phase: 'prepare',
+    currentSet: 1,
+    currentRep: 1,
+    currentSession: 1,
+    instruction: getInstructions(exerciseType).prepare,
+    holdSoundPlayed: false,
+    currentScheme: 1,
+    schemeOneCompleted: false,
+  });
+
+  // State для видео
+  const [videoDuration, setVideoDuration] = useState(4);
+  const [videoPlaybackState, setVideoPlaybackState] = useState<{
+    paused: boolean;
+    shouldSeek: boolean;
+    seekTime: number;
+  }>({
+    paused: true,
+    shouldSeek: true,
+    seekTime: 0,
+  });
+
+  const videoRef = useRef<any>(null);
+
+  // Загрузка программы реабилитации и прогресса
+  useFocusEffect(
+    useCallback(() => {
+      const loadRehabData = async () => {
+        try {
+          const progress = await UserProgressManager.getProgress();
+          if (progress) {
+            setUserProgress(progress);
+            
+            await RehabProgramLoader.initializePrograms();
+            const program = await RehabProgramLoader.getProgramById(progress.currentProgramId);
+            if (program) {
+              setRehabProgram(program);
+              console.log('[ExerciseExecution] Loaded program:', program.nameRu, 'week:', progress.currentWeek);
+            }
+          }
+        } catch (error) {
+          console.error('[ExerciseExecution] Error loading rehab data:', error);
+        }
+      };
+      
+      loadRehabData();
+    }, [])
+  );
+
+  // Функция загрузки данных упражнения
+  const loadExerciseData = useCallback(async () => {
+    try {
+      setIsLoadingVideo(true);
+      const today = new Date().toISOString().split('T')[0];
+      const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+      
+      let exerciseId = exerciseType;
+      let execType = 'hold';
+      let exSettings = null;
+      
+      console.log('=== LOADING EXERCISE DATA ===');
+      console.log('exerciseType (route param):', exerciseType);
+      console.log('exerciseName (route param):', exerciseName);
+      
+      if (savedExercises) {
+        const exercises = JSON.parse(savedExercises);
+        console.log('Saved exercises:', exercises.map((e: any) => ({ id: e.id, name: e.name })));
+        
+        const currentExercise = exercises.find((ex: any) => ex.id === exerciseType);
+        console.log('Current exercise found:', currentExercise ? 'YES' : 'NO');
+        
+        if (currentExercise?.extendedData) {
+          if (currentExercise.extendedData.exerciseId) {
+            exerciseId = currentExercise.extendedData.exerciseId;
+            console.log('Using extendedData.exerciseId:', exerciseId);
+          }
+          
+          if (currentExercise.extendedData.exerciseInfo?.executionType) {
+            execType = currentExercise.extendedData.exerciseInfo.executionType;
+            console.log('Using extendedData.executionType:', execType);
+          }
+          
+          if (rehabProgram && userProgress) {
+            exSettings = await UserProgressManager.getExerciseSettings(rehabProgram, exerciseId);
+            console.log('[ExerciseExecution] Using UserProgressManager.getExerciseSettings:', exSettings);
+          } else if (currentExercise.extendedData.settings) {
+            exSettings = currentExercise.extendedData.settings;
+            console.log('[ExerciseExecution] Using extendedData.settings (fallback):', exSettings);
+          }
+        } else {
+          console.log('No extendedData, using legacy exerciseType:', exerciseType);
+        }
+      } else {
+        console.log('No saved exercises found');
+      }
+      
+      console.log('Final exerciseId:', exerciseId);
+      console.log('Final executionType:', execType);
+      setCurrentExerciseId(exerciseId);
+      setExecutionType(execType);
+      setExerciseSettings(exSettings);
+      
+      const video = getExerciseVideo(exerciseId);
+      console.log('Video source:', video);
+      setVideoSource(video);
+      setIsLoadingVideo(false);
+      console.log('=== DATA LOADING COMPLETE ===');
+    } catch (error) {
+      console.error('Error loading exercise data:', error);
+      const fallbackVideo = EXERCISE_ANIMATIONS[exerciseType] || DEFAULT_PLACEHOLDER;
+      setVideoSource(fallbackVideo);
+      setIsLoadingVideo(false);
+    }
+  }, [exerciseType, exerciseName, rehabProgram, userProgress]);
+
+  // Загрузка при монтировании
+  useEffect(() => {
+    loadExerciseData();
+  }, [loadExerciseData]);
+
+  // ⚙️ ПЕРЕЗАГРУЗКА при возврате с экрана настроек
+  useFocusEffect(
+    useCallback(() => {
+      loadExerciseData();
+    }, [loadExerciseData])
+  );
+
+  // Загрузка прогресса упражнения
+  const loadExerciseProgress = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      const savedExercises = await AsyncStorage.getItem(`exercises_${today}`);
+      if (savedExercises) {
+        const exercises = JSON.parse(savedExercises);
+        const currentExercise = exercises.find((ex: any) => ex.id === exerciseType);
+        if (currentExercise?.completed) {
+          setButtonState('completed');
+          setTimer(prev => ({
+            ...prev,
+            phase: 'completed',
+            instruction: getInstructions(exerciseType).completed,
+          }));
+          return;
+        }
+      }
+      
+      const key = `exercise_progress_${exerciseType}_${today}`;
+      const savedProgress = await AsyncStorage.getItem(key);
+      
+      if (savedProgress) {
+        const progress: ExerciseProgress = JSON.parse(savedProgress);
+        const hoursDiff = (Date.now() - progress.timestamp) / (1000 * 60 * 60);
+        
+        if (hoursDiff < 24) {
+          setExerciseProgress(progress);
+          setButtonState('continue');
+          
+          if (exerciseType === 'bird_dog' && progress.schemeOneCompleted) {
+            setTimer(prev => ({
+              ...prev,
+              phase: 'schemeCompleted',
+              schemeOneCompleted: true,
+              currentScheme: 2,
+              instruction: getInstructions(exerciseType).schemeCompleted,
+            }));
+          }
+          
+          console.log(`Промежуточное состояние ${exerciseType} восстановлено:`, progress);
+        } else {
+          await AsyncStorage.removeItem(key);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading exercise progress:', error);
+    }
+  };
+
+  // Сохранение прогресса
+  const saveExerciseProgress = async (progress: Partial<ExerciseProgress>) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const key = `exercise_progress_${exerciseType}_${today}`;
+      
+      const fullProgress: ExerciseProgress = {
+        exerciseType,
+        completedSets: progress.completedSets || 0,
+        currentSet: progress.currentSet || 1,
+        currentRep: progress.currentRep || 1,
+        timestamp: Date.now(),
+        ...(exerciseType === 'bird_dog' && {
+          currentScheme: progress.currentScheme || 1,
+          schemeOneCompleted: progress.schemeOneCompleted || false
+        })
+      };
+      
+      await AsyncStorage.setItem(key, JSON.stringify(fullProgress));
+      setExerciseProgress(fullProgress);
+      console.log(`Промежуточное состояние ${exerciseType} сохранено:`, fullProgress);
+    } catch (error) {
+      console.error('Error saving exercise progress:', error);
+    }
+  };
+
+  // Очистка прогресса
+  const clearExerciseProgress = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const key = `exercise_progress_${exerciseType}_${today}`;
+      await AsyncStorage.removeItem(key);
+      setExerciseProgress(null);
+      console.log(`Промежуточное состояние ${exerciseType} очищено`);
+    } catch (error) {
+      console.error('Error clearing exercise progress:', error);
+    }
+  };
+
+  // Загрузка прогресса при монтировании
+  useEffect(() => {
+    loadExerciseProgress();
+  }, []);
+
+  return {
+    // State
+    currentExerciseId,
+    executionType,
+    exerciseSettings,
+    videoSource,
+    isLoadingVideo,
+    rehabProgram,
+    userProgress,
+    exerciseProgress,
+    buttonState,
+    timer,
+    videoDuration,
+    videoPlaybackState,
+    videoRef,
+    
+    // Setters
+    setTimer,
+    setButtonState,
+    setVideoDuration,
+    setVideoPlaybackState,
+    
+    // Functions
+    saveExerciseProgress,
+    clearExerciseProgress,
+  };
+};

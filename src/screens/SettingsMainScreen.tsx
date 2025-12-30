@@ -55,13 +55,6 @@ const settingsMenuItems: SettingsMenuItem[] = [
     isRootScreen: true,
   },
   {
-    id: 'exercises',
-    title: 'Настройки по умолчанию',
-    description: 'Глобальные параметры для всех упражнений',
-    screen: 'ExerciseSettings',
-    icon: '🏃‍♀️',
-  },
-  {
     id: 'notifications',
     title: 'Уведомления',
     description: 'Управление push-уведомлениями',

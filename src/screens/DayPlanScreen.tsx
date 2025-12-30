@@ -134,28 +134,46 @@ const DayPlanScreen: React.FC = () => {
       console.log(`[DayPlan] Week ${progress.currentWeek} settings:`, currentWeekSettings);
 
       // Получаем упражнения из программы и применяем настройки текущей недели
-      let programExercises = program.exercises
-        .filter(ex => ex.isEnabled)
-        .sort((a, b) => a.order - b.order)
-        .map(ex => {
-          // Мержим ТОЛЬКО релевантные поля настроек (исключаем week)
-          const mergedSettings = { ...ex.settings };
-          
-          if (currentWeekSettings.holdTime !== undefined) mergedSettings.holdTime = currentWeekSettings.holdTime;
-          if (currentWeekSettings.repsSchema !== undefined) mergedSettings.repsSchema = currentWeekSettings.repsSchema;
-          if (currentWeekSettings.restTime !== undefined) mergedSettings.restTime = currentWeekSettings.restTime;
-          if (currentWeekSettings.dynamicReps !== undefined) mergedSettings.dynamicReps = currentWeekSettings.dynamicReps;
-          if (currentWeekSettings.dynamicSets !== undefined) mergedSettings.dynamicSets = currentWeekSettings.dynamicSets;
-          if (currentWeekSettings.rollingDuration !== undefined) mergedSettings.rollingDuration = currentWeekSettings.rollingDuration;
-          if (currentWeekSettings.rollingSessions !== undefined) mergedSettings.rollingSessions = currentWeekSettings.rollingSessions;
-          if (currentWeekSettings.walkDuration !== undefined) mergedSettings.walkDuration = currentWeekSettings.walkDuration;
-          if (currentWeekSettings.walkSessions !== undefined) mergedSettings.walkSessions = currentWeekSettings.walkSessions;
-          
-          return {
-            ...ex,
-            settings: mergedSettings,
-          };
-        });
+      let programExercises = await Promise.all(
+        program.exercises
+          .filter(ex => ex.isEnabled)
+          .sort((a, b) => a.order - b.order)
+          .map(async (ex) => {
+            // 1. Базовые настройки упражнения
+            const mergedSettings = { ...ex.settings };
+            
+            // 2. Применяем недельные настройки из программы
+            if (currentWeekSettings.holdTime !== undefined) mergedSettings.holdTime = currentWeekSettings.holdTime;
+            if (currentWeekSettings.repsSchema !== undefined) mergedSettings.repsSchema = currentWeekSettings.repsSchema;
+            if (currentWeekSettings.restTime !== undefined) mergedSettings.restTime = currentWeekSettings.restTime;
+            if (currentWeekSettings.dynamicReps !== undefined) mergedSettings.dynamicReps = currentWeekSettings.dynamicReps;
+            if (currentWeekSettings.dynamicSets !== undefined) mergedSettings.dynamicSets = currentWeekSettings.dynamicSets;
+            if (currentWeekSettings.rollingDuration !== undefined) mergedSettings.rollingDuration = currentWeekSettings.rollingDuration;
+            if (currentWeekSettings.rollingSessions !== undefined) mergedSettings.rollingSessions = currentWeekSettings.rollingSessions;
+            if (currentWeekSettings.walkDuration !== undefined) mergedSettings.walkDuration = currentWeekSettings.walkDuration;
+            if (currentWeekSettings.walkSessions !== undefined) mergedSettings.walkSessions = currentWeekSettings.walkSessions;
+            
+            // 3. ⚙️ ПРИМЕНЯЕМ РУЧНЫЕ НАСТРОЙКИ (самый высокий приоритет!)
+            try {
+              const manualSettingsKey = `manual_exercise_settings_${ex.exerciseId}`;
+              const manualSettingsJson = await AsyncStorage.getItem(manualSettingsKey);
+              
+              if (manualSettingsJson) {
+                const manualSettings = JSON.parse(manualSettingsJson);
+                console.log(`[DayPlan] ⚙️ Manual settings applied for ${ex.exerciseId}`);
+                // Применяем ручные настройки поверх всех остальных
+                Object.assign(mergedSettings, manualSettings);
+              }
+            } catch (error) {
+              console.error(`[DayPlan] Error loading manual settings for ${ex.exerciseId}:`, error);
+            }
+            
+            return {
+              ...ex,
+              settings: mergedSettings,
+            };
+          })
+      );
       
       console.log(`[DayPlan] Loaded ${programExercises.length} exercises with week ${progress.currentWeek} settings`);
       console.log(`[DayPlan] Schema: ${currentWeekSettings.repsSchema?.join('-') || 'default'}`);

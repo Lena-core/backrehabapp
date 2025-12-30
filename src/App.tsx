@@ -16,6 +16,7 @@ import OnboardingNavigator from './navigation/OnboardingNavigator';
 import ProgramSelectionScreen from './screens/ProgramSelectionScreen';
 import ProgramExerciseSettingsScreen from './screens/ProgramExerciseSettingsScreen';
 import RehabSystemTestScreen from './screens/RehabSystemTestScreen';
+import ManualExerciseSettingsScreen from './screens/ManualExerciseSettingsScreen';
 
 // Импорт типов
 import { RootStackParamList, TabParamList } from './types';
@@ -226,6 +227,13 @@ function AppNavigator(): JSX.Element {
       <Stack.Screen 
         name="RehabSystemTest" 
         component={RehabSystemTestScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen 
+        name="ManualExerciseSettings" 
+        component={ManualExerciseSettingsScreen}
         options={{
           headerShown: false,
         }}
