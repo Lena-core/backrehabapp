@@ -45,7 +45,9 @@ export class UserProgressManager {
       daysCompleted: 0,
       currentWeek: 1,
       manualOverrides: {},
+      weeklyAdjustedSettings: {},
       progressionHistory: [],
+      programHistory: [],
       missedDays: [],
       currentStreak: 0,
       longestStreak: 0,
@@ -136,6 +138,7 @@ export class UserProgressManager {
 
   /**
    * Получить настройки для упражнения с учетом weekly progression и manual overrides
+   * ПРИОРИТЕТ: manual overrides > weeklyAdjustedSettings > weekly progression > base settings
    */
   static async getExerciseSettings(
     program: RehabProgram,
@@ -143,7 +146,7 @@ export class UserProgressManager {
   ): Promise<ExtendedExerciseSettings> {
     const progress = await this.getProgress();
     
-    // Проверяем ручные изменения
+    // 1. ВЫСШИЙ ПРИОРИТЕТ: ручные изменения
     if (progress?.manualOverrides[exerciseId]) {
       console.log(`[UserProgressManager] Using manual override for ${exerciseId}`);
       return progress.manualOverrides[exerciseId];
@@ -157,29 +160,40 @@ export class UserProgressManager {
     
     const baseSettings = exerciseInProgram.settings;
     
-    // Если нет прогресса или weekly progression пустой, возвращаем базовые настройки
-    if (!progress || program.weeklyProgression.length === 0) {
+    // Если нет прогресса, возвращаем базовые настройки
+    if (!progress) {
       return baseSettings;
     }
     
-    // Получаем настройки для текущей недели
-    const weekSettings = this.getCurrentWeekSettings(program, progress.currentWeek);
+    // 2. СРЕДНИЙ ПРИОРИТЕТ: weeklyAdjustedSettings (когда прогрессия была принята с manual overrides)
+    if (progress.weeklyAdjustedSettings?.[progress.currentWeek]?.[exerciseId]) {
+      console.log(`[UserProgressManager] Using weekly adjusted settings for ${exerciseId}, week ${progress.currentWeek}`);
+      return progress.weeklyAdjustedSettings[progress.currentWeek][exerciseId];
+    }
     
-    // Объединяем базовые настройки с weekly progression
-    const mergedSettings: ExtendedExerciseSettings = {
-      ...baseSettings,
-      ...(weekSettings.holdTime !== undefined && { holdTime: weekSettings.holdTime }),
-      ...(weekSettings.repsSchema !== undefined && { repsSchema: weekSettings.repsSchema }),
-      ...(weekSettings.restTime !== undefined && { restTime: weekSettings.restTime }),
-      ...(weekSettings.dynamicReps !== undefined && { dynamicReps: weekSettings.dynamicReps }),
-      ...(weekSettings.dynamicSets !== undefined && { dynamicSets: weekSettings.dynamicSets }),
-      ...(weekSettings.rollingDuration !== undefined && { rollingDuration: weekSettings.rollingDuration }),
-      ...(weekSettings.rollingSessions !== undefined && { rollingSessions: weekSettings.rollingSessions }),
-      ...(weekSettings.walkDuration !== undefined && { walkDuration: weekSettings.walkDuration }),
-      ...(weekSettings.walkSessions !== undefined && { walkSessions: weekSettings.walkSessions }),
-    };
+    // 3. НИЗКИЙ ПРИОРИТЕТ: weekly progression из программы
+    if (program.weeklyProgression.length > 0) {
+      const weekSettings = this.getCurrentWeekSettings(program, progress.currentWeek);
+      
+      // Объединяем базовые настройки с weekly progression
+      const mergedSettings: ExtendedExerciseSettings = {
+        ...baseSettings,
+        ...(weekSettings.holdTime !== undefined && { holdTime: weekSettings.holdTime }),
+        ...(weekSettings.repsSchema !== undefined && { repsSchema: weekSettings.repsSchema }),
+        ...(weekSettings.restTime !== undefined && { restTime: weekSettings.restTime }),
+        ...(weekSettings.dynamicReps !== undefined && { dynamicReps: weekSettings.dynamicReps }),
+        ...(weekSettings.dynamicSets !== undefined && { dynamicSets: weekSettings.dynamicSets }),
+        ...(weekSettings.rollingDuration !== undefined && { rollingDuration: weekSettings.rollingDuration }),
+        ...(weekSettings.rollingSessions !== undefined && { rollingSessions: weekSettings.rollingSessions }),
+        ...(weekSettings.walkDuration !== undefined && { walkDuration: weekSettings.walkDuration }),
+        ...(weekSettings.walkSessions !== undefined && { walkSessions: weekSettings.walkSessions }),
+      };
+      
+      return mergedSettings;
+    }
     
-    return mergedSettings;
+    // 4. ПОСЛЕДНИЙ ВАРИАНТ: базовые настройки
+    return baseSettings;
   }
 
   /**
@@ -216,7 +230,63 @@ export class UserProgressManager {
   }
 
   /**
+   * 🆕 Применить прогрессию к текущим настройкам упражнения
+   * @param currentSettings - текущие настройки (с учетом manual overrides)
+   * @param progressionMultiplier - множитель прогрессии (например, 1.1 для +10%)
+   */
+  static applyProgressionToSettings(
+    currentSettings: ExtendedExerciseSettings,
+    progressionMultiplier: number = 1.1
+  ): ExtendedExerciseSettings {
+    const newSettings: ExtendedExerciseSettings = { ...currentSettings };
+    
+    // Применяем прогрессию к разным типам настроек
+    if (currentSettings.holdTime !== undefined) {
+      newSettings.holdTime = Math.round(currentSettings.holdTime * progressionMultiplier);
+    }
+    
+    if (currentSettings.repsSchema !== undefined) {
+      newSettings.repsSchema = currentSettings.repsSchema.map(
+        r => Math.round(r * progressionMultiplier)
+      );
+    }
+    
+    // Rest time можно не увеличивать или даже немного уменьшать
+    if (currentSettings.restTime !== undefined) {
+      // Оставляем как есть или немного уменьшаем
+      newSettings.restTime = Math.max(5, Math.round(currentSettings.restTime * 0.95));
+    }
+    
+    if (currentSettings.dynamicReps !== undefined) {
+      newSettings.dynamicReps = Math.round(currentSettings.dynamicReps * progressionMultiplier);
+    }
+    
+    if (currentSettings.dynamicSets !== undefined) {
+      newSettings.dynamicSets = Math.round(currentSettings.dynamicSets * progressionMultiplier);
+    }
+    
+    if (currentSettings.rollingDuration !== undefined) {
+      newSettings.rollingDuration = Math.round(currentSettings.rollingDuration * progressionMultiplier);
+    }
+    
+    if (currentSettings.rollingSessions !== undefined) {
+      newSettings.rollingSessions = Math.round(currentSettings.rollingSessions * progressionMultiplier);
+    }
+    
+    if (currentSettings.walkDuration !== undefined) {
+      newSettings.walkDuration = Math.round(currentSettings.walkDuration * progressionMultiplier);
+    }
+    
+    if (currentSettings.walkSessions !== undefined) {
+      newSettings.walkSessions = Math.round(currentSettings.walkSessions * progressionMultiplier);
+    }
+    
+    return newSettings;
+  }
+
+  /**
    * Принять предложение прогрессии
+   * 🔥 ИСПРАВЛЕНО: Теперь применяет прогрессию к ТЕКУЩИМ настройкам (с учетом manual overrides)
    */
   static async acceptProgression(
     program: RehabProgram,
@@ -227,6 +297,33 @@ export class UserProgressManager {
     
     const previousSettings = this.getCurrentWeekSettings(program, progress.currentWeek);
     const newSettings = this.getCurrentWeekSettings(program, newWeek);
+    
+    // 🆕 ГЛАВНОЕ ИЗМЕНЕНИЕ: Применяем прогрессию к ТЕКУЩИМ настройкам каждого упражнения
+    const adjustedSettings: { [exerciseId: string]: ExtendedExerciseSettings } = {};
+    
+    for (const exercise of program.exercises) {
+      // Получаем ТЕКУЩИЕ настройки (с учетом manual overrides)
+      const currentSettings = await this.getExerciseSettings(program, exercise.exerciseId);
+      
+      // Применяем прогрессию (+10%)
+      const progressedSettings = this.applyProgressionToSettings(currentSettings, 1.1);
+      
+      adjustedSettings[exercise.exerciseId] = progressedSettings;
+      
+      console.log(`[UserProgressManager] Progression for ${exercise.exerciseId}:`, {
+        current: currentSettings.repsSchema || currentSettings.holdTime,
+        new: progressedSettings.repsSchema || progressedSettings.holdTime,
+      });
+    }
+    
+    // Сохраняем скорректированные настройки для новой недели
+    if (!progress.weeklyAdjustedSettings) {
+      progress.weeklyAdjustedSettings = {};
+    }
+    progress.weeklyAdjustedSettings[newWeek] = adjustedSettings;
+    
+    // Очищаем manual overrides (они стали базовыми для новой недели)
+    progress.manualOverrides = {};
     
     // Сохраняем в историю
     progress.progressionHistory.push({
@@ -240,7 +337,7 @@ export class UserProgressManager {
     progress.currentWeek = newWeek;
     
     await this.saveProgress(progress);
-    console.log(`[UserProgressManager] Progression accepted: week ${newWeek}`);
+    console.log(`[UserProgressManager] ✅ Progression accepted: week ${newWeek}, manual overrides cleared`);
   }
 
   /**
@@ -375,6 +472,161 @@ export class UserProgressManager {
     }
     
     return Math.ceil(program.durationDays / 7);
+  }
+
+  // ============ 🆕 НОВЫЕ МЕТОДЫ ДЛЯ РАБОТЫ С БОЛЬЮ И ИСТОРИЕЙ ПРОГРАММ ============
+
+  /**
+   * 🆕 Снизить текущие настройки всех упражнений на указанный процент
+   * Используется когда пользователь чувствует боль/дискомфорт
+   * @param program - текущая программа
+   * @param reductionPercent - процент снижения (0.25 = -25%)
+   */
+  static async reduceCurrentSettings(
+    program: RehabProgram,
+    reductionPercent: number = 0.25
+  ): Promise<void> {
+    const progress = await this.getProgress();
+    if (!progress) return;
+    
+    console.log(`[UserProgressManager] 🔻 Reducing settings by ${reductionPercent * 100}%`);
+    
+    // Для каждого упражнения уменьшаем ТЕКУЩИЕ настройки
+    for (const exercise of program.exercises) {
+      const currentSettings = await this.getExerciseSettings(program, exercise.exerciseId);
+      
+      const reducedSettings: ExtendedExerciseSettings = { ...currentSettings };
+      
+      // Уменьшаем нагрузку
+      if (currentSettings.holdTime !== undefined) {
+        reducedSettings.holdTime = Math.max(3, Math.round(currentSettings.holdTime * (1 - reductionPercent)));
+      }
+      
+      if (currentSettings.repsSchema !== undefined) {
+        reducedSettings.repsSchema = currentSettings.repsSchema.map(
+          r => Math.max(1, Math.round(r * (1 - reductionPercent)))
+        );
+      }
+      
+      // Увеличиваем время отдыха (+25%)
+      if (currentSettings.restTime !== undefined) {
+        reducedSettings.restTime = Math.min(30, Math.round(currentSettings.restTime * (1 + reductionPercent)));
+      }
+      
+      if (currentSettings.dynamicReps !== undefined) {
+        reducedSettings.dynamicReps = Math.max(1, Math.round(currentSettings.dynamicReps * (1 - reductionPercent)));
+      }
+      
+      if (currentSettings.dynamicSets !== undefined) {
+        reducedSettings.dynamicSets = Math.max(1, Math.round(currentSettings.dynamicSets * (1 - reductionPercent)));
+      }
+      
+      if (currentSettings.rollingDuration !== undefined) {
+        reducedSettings.rollingDuration = Math.max(30, Math.round(currentSettings.rollingDuration * (1 - reductionPercent)));
+      }
+      
+      if (currentSettings.walkDuration !== undefined) {
+        reducedSettings.walkDuration = Math.max(5, Math.round(currentSettings.walkDuration * (1 - reductionPercent)));
+      }
+      
+      // Сохраняем как manual override
+      await this.setManualOverride(exercise.exerciseId, reducedSettings);
+      
+      console.log(`[UserProgressManager]   ${exercise.exerciseId}: ${JSON.stringify(currentSettings.repsSchema || currentSettings.holdTime)} → ${JSON.stringify(reducedSettings.repsSchema || reducedSettings.holdTime)}`);
+    }
+    
+    console.log('[UserProgressManager] ✅ Settings reduced successfully');
+  }
+
+  /**
+   * 🆕 Переключиться на программу с сохранением истории
+   * @param newProgramId - ID новой программы
+   */
+  static async switchProgramWithHistory(newProgramId: string): Promise<void> {
+    const progress = await this.getProgress();
+    if (!progress) {
+      await this.initializeProgress(newProgramId);
+      return;
+    }
+    
+    // Сохраняем текущую программу в историю
+    if (!progress.programHistory) {
+      progress.programHistory = [];
+    }
+    
+    progress.programHistory.push({
+      programId: progress.currentProgramId,
+      startDate: progress.programStartDate || new Date().toISOString(),
+      endDate: new Date().toISOString(),
+      completed: false,
+      week: progress.currentWeek,
+    });
+    
+    console.log(`[UserProgressManager] 💾 Saved ${progress.currentProgramId} to history`);
+    
+    // Переключаемся на новую программу
+    await this.initializeProgress(newProgramId);
+    
+    // Восстанавливаем историю
+    const newProgress = await this.getProgress();
+    if (newProgress) {
+      newProgress.programHistory = progress.programHistory;
+      await this.saveProgress(newProgress);
+    }
+    
+    console.log(`[UserProgressManager] ✅ Switched to program ${newProgramId}`);
+  }
+
+  /**
+   * 🆕 Вернуться к предыдущей программе
+   */
+  static async returnToPreviousProgram(): Promise<boolean> {
+    const progress = await this.getProgress();
+    if (!progress || !progress.programHistory || progress.programHistory.length === 0) {
+      console.log('[UserProgressManager] ⚠️ No previous program in history');
+      return false;
+    }
+    
+    // Берем последнюю программу из истории
+    const previousEntry = progress.programHistory[progress.programHistory.length - 1];
+    
+    console.log(`[UserProgressManager] ⬅️ Returning to ${previousEntry.programId}, week ${previousEntry.week}`);
+    
+    // Переключаемся
+    await this.initializeProgress(previousEntry.programId);
+    
+    const newProgress = await this.getProgress();
+    if (newProgress) {
+      // Восстанавливаем неделю (опционально)
+      newProgress.currentWeek = previousEntry.week || 1;
+      
+      // Удаляем из истории
+      progress.programHistory.pop();
+      newProgress.programHistory = progress.programHistory;
+      
+      await this.saveProgress(newProgress);
+      
+      console.log('[UserProgressManager] ✅ Successfully returned to previous program');
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * 🆕 Проверить, можно ли вернуться к предыдущей программе
+   */
+  static async canReturnToPreviousProgram(): Promise<boolean> {
+    const progress = await this.getProgress();
+    return !!(progress?.programHistory && progress.programHistory.length > 0);
+  }
+
+  /**
+   * 🆕 Получить историю программ
+   */
+  static async getProgramHistory() {
+    const progress = await this.getProgress();
+    return progress?.programHistory || [];
   }
 }
 

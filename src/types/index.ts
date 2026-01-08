@@ -419,6 +419,9 @@ export interface RehabProgram {
     [key: string]: string[];           // '1': ['curl_up', 'walk'], '3-4': ['walk']
   };
   
+  // 🆕 Предыдущая программа (более легкая)
+  previousProgramId?: string;
+  
   // Следующая программа после завершения
   nextProgramId?: string;
   
@@ -430,6 +433,15 @@ export interface RehabProgram {
   
   createdAt?: string;
   updatedAt?: string;
+}
+
+// История программы пользователя
+export interface ProgramHistoryEntry {
+  programId: string;
+  startDate: string;                   // ISO date
+  endDate?: string;                    // ISO date
+  completed: boolean;
+  week: number;                        // На какой неделе остановились
 }
 
 // Прогресс пользователя в программе
@@ -444,6 +456,14 @@ export interface UserProgress {
     [exerciseId: string]: ExtendedExerciseSettings;
   };
   
+  // 🆕 Скорректированные настройки для каждой недели и упражнения
+  // Используются когда пользователь принял прогрессию с manual overrides
+  weeklyAdjustedSettings?: {
+    [weekNumber: number]: {
+      [exerciseId: string]: ExtendedExerciseSettings;
+    };
+  };
+  
   // История прогрессии (когда пользователь принял/отклонил увеличение)
   progressionHistory: {
     date: string;                      // ISO date
@@ -452,6 +472,9 @@ export interface UserProgress {
     previousSettings?: WeeklyProgression;
     newSettings?: WeeklyProgression;
   }[];
+  
+  // 🆕 История программ (для возврата к предыдущим)
+  programHistory: ProgramHistoryEntry[];
   
   // Пропущенные дни (для расчета streak)
   missedDays: string[];                // ISO dates
@@ -462,6 +485,9 @@ export interface UserProgress {
   
   // Последний показанный popup прогрессии
   lastProgressionPopupDate?: string;   // ISO date
+  
+  // 🆕 Последняя дата чек-ина боли
+  lastPainCheckDate?: string;          // ISO date
 }
 
 // Popup предложения увеличения нагрузки
